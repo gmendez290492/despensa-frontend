@@ -6,7 +6,7 @@
 > backend en [`BACKEND_API_CONTEXT.md`](./BACKEND_API_CONTEXT.md).
 > Actualízalo al cerrar cada bloque de trabajo.
 
-**Última actualización:** 2026-11-26 · **Rama activa:** `feature/auth-login-register` (sale de `develop`, sin commits aún)
+**Última actualización:** 2026-11-26 · **Rama activa:** `feature/auth-login-register` → PR [#3](https://github.com/gmendez290492/despensa-frontend/pull/3) hacia `develop`
 
 ---
 
@@ -16,11 +16,11 @@
 |---|---|---|
 | Scaffold (Next 16, Zustand, TanStack Query, Serwist, OpenAPI) | ✅ En `develop` | commit `fc8c7a0` |
 | Arquitectura `.agents/` + subagentes y skills | ✅ En `develop` | PR #1, PR #2 |
-| Integración de **Modern Web Guidance** en reglas y agentes | ✅ Hecho (sin commit) | `AGENTS.md §7`, `stitch-ui-builder`, `qa-frontend-auditor`, `implement-stitch-screen` |
-| **Auth: login, registro, logout y BFF** | ✅ Implementado (sin commit) | Ver §2 |
+| Integración de **Modern Web Guidance** en reglas y agentes | ✅ En PR #3 | `AGENTS.md §7`, `stitch-ui-builder`, `qa-frontend-auditor`, `implement-stitch-screen` |
+| **Auth: login, registro, logout y BFF** | ✅ En PR #3 | Ver §2 |
 | Auditoría MWG del código de auth | ✅ Aplicada | Ver §3 |
 | Documentación **JSDoc** de exports | ✅ 200/200 exports en `src/` | Ver §4 |
-| Entrega por PR a `develop` | ⏳ Pendiente | Usar `/gitflow-pr-delivery`; requiere OK explícito del usuario |
+| Entrega por PR a `develop` | 🟡 PR #3 abierto, CI en verde | Merge solo con confirmación explícita del usuario |
 | Home Dashboard (Stitch) | ⏳ Siguiente | `src/app/page.tsx` es un placeholder temporal |
 
 ### Puertas de calidad (última ejecución: 2026-11-26)
@@ -120,7 +120,7 @@ Ya cumplía antes: `<form>` + `<label for>`, `type="email"`, toggle "mostrar con
 ## 6. Próximos pasos
 
 1. Ejecutar E2E de Playwright con FastAPI local (`auth.spec.ts`, `offline.spec.ts`, `smoke.spec.ts`).
-2. Entregar `feature/auth-login-register` → `develop` con `/gitflow-pr-delivery` (commits convencionales; merge solo con confirmación).
+2. Revisar y fusionar el PR #3 en `develop` (solo con confirmación explícita), borrar la rama y sincronizar `develop` en local.
 3. Resolver los hallazgos abiertos de §3.
 4. Siguiente pantalla Stitch: Home Dashboard (lotes FEFO, semáforo, alertas) con `implement-stitch-screen`.
 5. Outbox real (Dexie + `offline-outbox-mutation`) y diálogo "tienes N cambios sin sincronizar" antes del logout (TODO en `clear-user-data.ts`).
