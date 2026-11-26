@@ -19,12 +19,14 @@ import {
 
 const FORGOT_FIELDS = ["email"] as const;
 const OFFLINE_HINT_ID = "forgot-offline-hint";
+const labelClass = "text-[12.5px] tracking-wider uppercase";
 
 const linkClass =
   "inline-flex min-h-11 items-center font-semibold text-primary-container underline underline-offset-4 hover:text-foreground focus-visible:rounded-[4px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-container";
 
 /**
- * Formulario "Olvidé mi contraseña": pide el correo y muestra siempre el
+ * Formulario "Olvidé mi contraseña" (Stitch "Despensa - Recuperar Contraseña",
+ * screen `84802b86c1ae44ea83665e1b0e03b10b`): pide el correo y muestra siempre el
  * mismo mensaje genérico de FastAPI, exista o no la cuenta (no revela si el
  * correo está registrado).
  *
@@ -104,6 +106,7 @@ export function ForgotPasswordForm() {
           <TextField
             id="forgot-email"
             label="Correo electrónico"
+            labelClassName={labelClass}
             type="email"
             inputMode="email"
             autoComplete="username"

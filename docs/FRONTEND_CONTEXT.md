@@ -30,7 +30,7 @@
 |---|---|
 | `pnpm lint` | ✅ 0 errores |
 | `pnpm typecheck` | ✅ App + SW |
-| `pnpm test` | ✅ 226/226 (18 archivos) |
+| `pnpm test` | ✅ 231/231 (19 archivos) |
 | `pnpm build` | ✅ 13 rutas · `public/sw.js` precachea 29 URLs (1.02 MB) |
 | Playwright E2E | ⚠️ No ejecutado en esta sesión (requiere FastAPI local) |
 
@@ -44,8 +44,8 @@
 |---|---|---|
 | `/login` | "Despensa - Inicio de Sesión" · `4d4e6b2187214e199d780ad47bc707ae` | `src/features/auth/components/login-form.tsx` |
 | `/registro` | "Despensa - Crear Cuenta (Registro)" · `4a85f9a297184c228178ec3982dec9ed` | `src/features/auth/components/register-form.tsx` |
-| `/recuperar-contrasena` | — (sin pantalla Stitch; reutiliza layout de auth) | `src/features/auth/components/forgot-password-form.tsx` |
-| `/reset-password` | — (ruta fijada por el correo del backend) | `src/features/auth/components/reset-password-form.tsx` |
+| `/recuperar-contrasena` | "Despensa - Recuperar Contraseña" · `84802b86c1ae44ea83665e1b0e03b10b` | `src/features/auth/components/forgot-password-form.tsx` |
+| `/reset-password` | "Despensa - Restablecer Contraseña" · `ad43b46c2dbb4794b1b4660b02272223` (ruta fijada por el correo del backend) | `src/features/auth/components/reset-password-form.tsx` |
 | `/offline` | — (fallback del SW) | `src/app/offline/page.tsx` |
 | `/` | — (placeholder autenticado) | `src/app/page.tsx` |
 
@@ -105,7 +105,7 @@ Ya cumplía antes: `<form>` + `<label for>`, `type="email"`, toggle "mostrar con
 ### Hallazgos abiertos (requieren decisión)
 
 1. **Doble campo de contraseña** (`confirm_password`): la guía de registro desaconseja pedirla dos veces. Se mantiene porque lo pide el diseño Stitch. *Decisión de producto pendiente.*
-2. ~~"¿Olvidaste tu contraseña?"~~ ✅ Resuelto con el issue #4 (falta diseño en Stitch para las dos pantallas nuevas).
+2. ~~"¿Olvidaste tu contraseña?"~~ ✅ Resuelto con el issue #4; pantallas diseñadas en Stitch.
 3. **Tamaños en `px`** (`text-[13px]`, `text-[15px]`…) heredados del export de Stitch: `respect-os-text-scale` recomienda unidades relativas. El root font-size no se fija (correcto). Migrar a `rem` en una pasada de tokens tipográficos.
 4. **Contraste del track del slider** (`--surface-high` vs fondo): verificar ≥ 3:1.
 5. Botón de envío `disabled` cuando no hay conexión: su `aria-describedby` no se lee porque un botón deshabilitado no recibe foco. El texto visible lo compensa; valorar `aria-disabled`.

@@ -15,6 +15,10 @@ export const metadata: Metadata = {
 };
 
 /**
+ * Stitch "Despensa - Restablecer Contraseña" (screen
+ * `ad43b46c2dbb4794b1b4660b02272223`). Se omiten del diseño la barra con botón
+ * de perfil y la tarjeta "¿Necesitas asistencia?" (sin destino en el producto).
+ *
  * Destino del correo de recuperación (`/reset-password?token=…`; el nombre de
  * la ruta lo fija `FRONTEND_BASE_URL` del backend).
  *

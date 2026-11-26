@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Lock } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -26,6 +26,7 @@ import {
 const RESET_FIELDS = ["new_password"] as const;
 const OFFLINE_HINT_ID = "reset-offline-hint";
 const STRENGTH_ID = "reset-password-strength";
+const labelClass = "text-[12.5px] tracking-wider uppercase";
 
 const linkClass =
   "inline-flex min-h-11 items-center font-semibold text-primary-container underline underline-offset-4 hover:text-foreground focus-visible:rounded-[4px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-container";
@@ -54,7 +55,8 @@ function InvalidLink({ message }: { message: string }) {
 }
 
 /**
- * Formulario de restablecimiento de contraseña (destino del enlace del correo
+ * Formulario de restablecimiento de contraseña (Stitch "Despensa - Restablecer
+ * Contraseña", screen `ad43b46c2dbb4794b1b4660b02272223`; destino del enlace del correo
  * `/reset-password?token=…`). Lee `useSearchParams`: envolver en `<Suspense>`.
  *
  * @remarks
@@ -152,7 +154,9 @@ export function ResetPasswordForm() {
         <PasswordField
           id="reset-new-password"
           label="Contraseña nueva"
+          labelClassName={labelClass}
           autoComplete="new-password"
+          leadingIcon={<Lock className="size-4" strokeWidth={1.75} />}
           enterKeyHint="done"
           required
           minLength={8}

@@ -10,8 +10,9 @@ export const metadata: Metadata = {
 };
 
 /**
- * "Olvidé mi contraseña" (enlace del login de Stitch "Inicio de Sesión"; sin
- * pantalla propia en Stitch: reutiliza el layout y los componentes de auth).
+ * "Olvidé mi contraseña": Stitch "Despensa - Recuperar Contraseña"
+ * (screen `84802b86c1ae44ea83665e1b0e03b10b`). Del diseño se omiten la
+ * segunda barra superior con botón de perfil (pantalla sin sesión).
  *
  * @returns La página de recuperación.
  */
