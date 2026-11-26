@@ -1,16 +1,13 @@
 import Dexie, { type EntityTable } from "dexie";
+import type { ProblemDetail } from "@/lib/api/problem";
 
+/**
+ * Estado de una mutación en la outbox: `pending` → `syncing` → (borrada | `conflict`
+ * si FastAPI responde un error de negocio RFC 7807 | `failed`).
+ */
 export type OutboxMutationStatus = "pending" | "syncing" | "conflict" | "failed";
 
-export interface ProblemDetailError {
-  type: string;
-  title: string;
-  status: number;
-  detail: string;
-  instance?: string;
-  correlation_id?: string | null;
-}
-
+/** Fila de la tabla `outboxQueue` (patrón Client Outbox). */
 export interface OutboxMutationRecord {
   id?: number;
   clientMutationId: string;
@@ -20,9 +17,14 @@ export interface OutboxMutationRecord {
   pantryId: string | null;
   status: OutboxMutationStatus;
   createdAt: string;
-  lastError?: ProblemDetailError | null;
+  /** Último error RFC 7807 al sincronizar (tipo compartido de `@/lib/api/problem`). */
+  lastError?: ProblemDetail | null;
 }
 
+/**
+ * Base IndexedDB de la app (Dexie). Al añadir tablas, sube `version()` y
+ * declara la migración; `clearUserOfflineData` vacía todas al cerrar sesión.
+ */
 export class DespensaOfflineDB extends Dexie {
   outboxQueue!: EntityTable<OutboxMutationRecord, "id">;
 
@@ -34,4 +36,5 @@ export class DespensaOfflineDB extends Dexie {
   }
 }
 
+/** Instancia única de {@link DespensaOfflineDB}. Impórtala dinámicamente para no cargar Dexie en el bundle inicial. */
 export const offlineDb = new DespensaOfflineDB();
