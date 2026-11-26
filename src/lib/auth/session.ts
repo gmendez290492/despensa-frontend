@@ -10,7 +10,11 @@ import {
   problemTypeUri,
 } from "@/lib/api/problem";
 import { createBackendClient, unwrap, type BackendClient } from "@/lib/api/server-client";
-import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE } from "@/lib/auth/constants";
+import {
+  ACCESS_TOKEN_COOKIE,
+  CLIENT_BINDING_COOKIE,
+  REFRESH_TOKEN_COOKIE,
+} from "@/lib/auth/constants";
 import { refreshTokenMaxAge } from "@/lib/auth/jwt";
 import { forgetRefreshToken, refreshTokens, type TokenResponse } from "@/lib/auth/refresh";
 
@@ -44,24 +48,39 @@ export async function getRequestCorrelationId(): Promise<string> {
   return resolveCorrelationId(await headers());
 }
 
-/** Solo en Route Handlers / Server Actions (las RSC no pueden escribir cookies). */
-export async function setSessionCookies(tokens: TokenResponse): Promise<void> {
+/**
+ * Persiste el par de tokens (y el `X-Client-Binding` de la sesión) en cookies
+ * `HttpOnly`. Solo en Route Handlers / Server Actions (las RSC no pueden
+ * escribir cookies).
+ *
+ * @param tokens - Par devuelto por FastAPI.
+ * @param clientBinding - Binding de la sesión. Si se omite, la cookie de binding
+ *   no se toca; con `null` se borra (sesión sin binding).
+ */
+export async function setSessionCookies(
+  tokens: TokenResponse,
+  clientBinding?: string | null,
+): Promise<void> {
   const store = await cookies();
   // Margen de 5 s para que la cookie caduque antes que el JWT.
   const accessMaxAge = Math.max(1, Math.floor(tokens.expires_in) - 5);
+  const refreshMaxAge = refreshTokenMaxAge(tokens.refresh_token);
   store.set(ACCESS_TOKEN_COOKIE, tokens.access_token, cookieOptions(accessMaxAge));
-  store.set(
-    REFRESH_TOKEN_COOKIE,
-    tokens.refresh_token,
-    cookieOptions(refreshTokenMaxAge(tokens.refresh_token)),
-  );
+  store.set(REFRESH_TOKEN_COOKIE, tokens.refresh_token, cookieOptions(refreshMaxAge));
+  if (clientBinding === null) {
+    store.set(CLIENT_BINDING_COOKIE, "", cookieOptions(0));
+  } else if (clientBinding !== undefined) {
+    // Misma vida que el refresh token: sin él, el binding no sirve de nada.
+    store.set(CLIENT_BINDING_COOKIE, clientBinding, cookieOptions(refreshMaxAge));
+  }
 }
 
-/** Solo en Route Handlers / Server Actions. */
+/** Borra las cookies de sesión (tokens y binding). Solo en Route Handlers / Server Actions. */
 export async function clearSessionCookies(): Promise<void> {
   const store = await cookies();
   store.set(ACCESS_TOKEN_COOKIE, "", cookieOptions(0));
   store.set(REFRESH_TOKEN_COOKIE, "", cookieOptions(0));
+  store.set(CLIENT_BINDING_COOKIE, "", cookieOptions(0));
 }
 
 /**
@@ -92,18 +111,22 @@ export async function revokePreviousSession(
 }
 
 /**
- * Lee los tokens de las cookies `HttpOnly` de la petición actual (solo servidor).
+ * Lee los tokens y el binding de las cookies `HttpOnly` de la petición actual
+ * (solo servidor).
  *
- * @returns `accessToken` y `refreshToken`, o `undefined` si faltan o están vacíos.
+ * @returns `accessToken`, `refreshToken` y `clientBinding`, o `undefined` si
+ *   faltan o están vacíos.
  */
 export async function getSessionTokens(): Promise<{
   accessToken: string | undefined;
   refreshToken: string | undefined;
+  clientBinding: string | undefined;
 }> {
   const store = await cookies();
   return {
     accessToken: store.get(ACCESS_TOKEN_COOKIE)?.value || undefined,
     refreshToken: store.get(REFRESH_TOKEN_COOKIE)?.value || undefined,
+    clientBinding: store.get(CLIENT_BINDING_COOKIE)?.value || undefined,
   };
 }
 
@@ -139,9 +162,11 @@ export async function refreshSession(
   refreshToken: string,
   correlationId: string,
 ): Promise<TokenResponse> {
+  // El binding viaja en su propia cookie; la sesión sigue ligada al mismo valor.
+  const { clientBinding } = await getSessionTokens();
   try {
-    const tokens = await refreshTokens(refreshToken, correlationId);
-    await setSessionCookies(tokens);
+    const tokens = await refreshTokens(refreshToken, correlationId, clientBinding);
+    await setSessionCookies(tokens, clientBinding);
     return tokens;
   } catch (error) {
     if (isAuthRejection(error)) {

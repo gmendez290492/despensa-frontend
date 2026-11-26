@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { ProblemDetailError } from "@/lib/api/problem";
 import { createBackendClient, unwrap } from "@/lib/api/server-client";
+import { CLIENT_BINDING_HEADER, createClientBinding } from "@/lib/auth/refresh";
 import { registerRequestSchema } from "@/lib/auth/schemas";
 import { revokePreviousSession, setSessionCookies } from "@/lib/auth/session";
 import {
@@ -30,14 +31,16 @@ export async function POST(request: NextRequest) {
     );
 
     try {
+      const clientBinding = createClientBinding();
       const tokens = await unwrap(
         client.POST("/api/v1/auth/login", {
           body: { email: payload.email, password: payload.password },
+          params: { header: { [CLIENT_BINDING_HEADER]: clientBinding } },
         }),
         correlationId,
       );
       await revokePreviousSession(correlationId, tokens.refresh_token);
-      await setSessionCookies(tokens);
+      await setSessionCookies(tokens, clientBinding);
     } catch (loginError) {
       if (!(loginError instanceof ProblemDetailError)) throw loginError;
       console.warn("[bff] registro correcto pero login automático falló", {
