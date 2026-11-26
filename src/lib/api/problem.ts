@@ -17,6 +17,7 @@ export const PROBLEM_TYPES = {
   invalidToken: "invalid-token",
   emailAlreadyExists: "email-already-exists",
   rateLimitExceeded: "rate-limit-exceeded",
+  invalidResetToken: "invalid-reset-token",
   pantryAccessDenied: "pantry-access-denied",
   insufficientStock: "insufficient-stock",
   // FastAPI 422 (RequestValidationError) normalizado por el BFF
@@ -51,6 +52,11 @@ export interface ProblemDetail {
   correlation_id?: string;
   /** Extensión: errores por campo (validación Zod en BFF o 422 de FastAPI). */
   errors?: ProblemFieldError[];
+  /**
+   * Extensión: segundos hasta poder reintentar (cabecera `Retry-After` de los
+   * `429`). El BFF la copia al cuerpo para que la UI no dependa de leer cabeceras.
+   */
+  retry_after?: number;
 }
 
 /** Construye la URI de tipo canónica a partir del slug (`invalid-token`). */
@@ -86,6 +92,8 @@ export class ProblemDetailError extends Error {
   readonly instance: string | undefined;
   readonly correlation_id: string | undefined;
   readonly errors: ProblemFieldError[] | undefined;
+  /** Segundos hasta poder reintentar (`429` con `Retry-After`), si se conocen. */
+  readonly retry_after: number | undefined;
 
   constructor(problem: ProblemDetail) {
     super(problem.detail ?? problem.title);
@@ -97,6 +105,7 @@ export class ProblemDetailError extends Error {
     this.instance = problem.instance;
     this.correlation_id = problem.correlation_id;
     this.errors = problem.errors;
+    this.retry_after = problem.retry_after;
   }
 
   /** Slug del tipo, p. ej. `"invalid-credentials"`. */
@@ -119,6 +128,7 @@ export class ProblemDetailError extends Error {
     if (this.instance !== undefined) body.instance = this.instance;
     if (this.correlation_id !== undefined) body.correlation_id = this.correlation_id;
     if (this.errors !== undefined) body.errors = this.errors;
+    if (this.retry_after !== undefined) body.retry_after = this.retry_after;
     return body;
   }
 }
@@ -185,6 +195,50 @@ function toFieldErrors(value: unknown): ProblemFieldError[] | undefined {
  * FastAPI, `{ detail: string }`, texto plano o vacío) en `ProblemDetailError`.
  */
 export function toProblemDetailError(
+  body: unknown,
+  status: number,
+  correlationId?: string | null,
+  retryAfterHeader?: string | null,
+): ProblemDetailError {
+  const error = buildProblemDetailError(body, status, correlationId);
+  const fromBody =
+    isRecord(body) && typeof body.retry_after === "number" && Number.isFinite(body.retry_after)
+      ? Math.max(0, Math.ceil(body.retry_after))
+      : undefined;
+  const retryAfter = parseRetryAfter(retryAfterHeader) ?? fromBody;
+  if (retryAfter === undefined || error.retry_after === retryAfter) return error;
+  return new ProblemDetailError({ ...error.toJSON(), retry_after: retryAfter });
+}
+
+/**
+ * Interpreta la cabecera `Retry-After` (RFC 9110 §10.2.3): segundos enteros o
+ * fecha HTTP.
+ *
+ * @param value - Valor crudo de la cabecera.
+ * @param nowMs - Reloj inyectable para tests.
+ * @returns Segundos (≥ 0, redondeados hacia arriba) o `undefined` si falta o es inválida.
+ *
+ * @example
+ * ```ts
+ * parseRetryAfter("120"); // 120
+ * parseRetryAfter("Wed, 21 Oct 2026 07:28:00 GMT"); // segundos hasta esa fecha
+ * ```
+ */
+export function parseRetryAfter(
+  value: string | null | undefined,
+  nowMs: number = Date.now(),
+): number | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (/^\d+$/.test(trimmed)) return Number(trimmed);
+  // Solo IMF-fixdate (RFC 9110): `Date.parse` aceptaría "-5" o "1.5" como fechas.
+  if (!/GMT$/.test(trimmed)) return undefined;
+  const date = Date.parse(trimmed);
+  if (Number.isNaN(date)) return undefined;
+  return Math.max(0, Math.ceil((date - nowMs) / 1000));
+}
+
+function buildProblemDetailError(
   body: unknown,
   status: number,
   correlationId?: string | null,
@@ -262,7 +316,7 @@ export async function parseProblemResponse(
   } catch {
     body = undefined;
   }
-  return toProblemDetailError(body, response.status, correlationId);
+  return toProblemDetailError(body, response.status, correlationId, response.headers.get("retry-after"));
 }
 
 /** Error de red (sin respuesta HTTP) normalizado. */

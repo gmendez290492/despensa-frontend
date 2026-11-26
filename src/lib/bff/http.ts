@@ -65,7 +65,8 @@ export function emptyResponse(correlationId: string, status = 204): NextResponse
 
 /**
  * Serializa un {@link ProblemDetailError} como `application/problem+json`,
- * conservando el `correlation_id` del backend si lo trae.
+ * conservando el `correlation_id` del backend si lo trae y reenviando
+ * `Retry-After` cuando el error lo conoce (`429`).
  *
  * @param error - Error a serializar.
  * @param correlationId - ID de respaldo.
@@ -78,6 +79,10 @@ export function problemResponse(error: ProblemDetailError, correlationId: string
     status: error.status,
     headers: { "Content-Type": PROBLEM_JSON_CONTENT_TYPE },
   });
+  // El navegador recibe `Retry-After` tanto en la cabecera como en `retry_after`.
+  if (error.retry_after !== undefined) {
+    response.headers.set("Retry-After", String(error.retry_after));
+  }
   return withCorrelation(response, effectiveCorrelation);
 }
 

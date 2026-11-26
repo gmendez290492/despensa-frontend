@@ -35,7 +35,7 @@ export interface paths {
         put?: never;
         /**
          * Login
-         * @description Autentica al usuario y devuelve access y refresh tokens.
+         * @description Autentica al usuario, abre una sesión y devuelve access y refresh tokens.
          */
         post: operations["login_api_v1_auth_login_post"];
         delete?: never;
@@ -75,9 +75,49 @@ export interface paths {
         put?: never;
         /**
          * Logout
-         * @description Revoca el refresh token indicado para cerrar sesión.
+         * @description Cierra la sesión: revoca el refresh token y los access tokens de esa sesión.
          */
         post: operations["logout_api_v1_auth_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/password/forgot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Forgot Password
+         * @description Solicita el correo de recuperación. Responde igual exista o no la cuenta.
+         */
+        post: operations["forgot_password_api_v1_auth_password_forgot_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/password/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset Password
+         * @description Restablece la contraseña con el token del correo y cierra todas las sesiones.
+         */
+        post: operations["reset_password_api_v1_auth_password_reset_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -685,6 +725,14 @@ export interface components {
             created_at: string;
         };
         /**
+         * MessageResponse
+         * @description Respuesta genérica con un mensaje legible.
+         */
+        MessageResponse: {
+            /** Detail */
+            detail: string;
+        };
+        /**
          * NotificationListResponse
          * @description Respuesta paginada del listado de notificaciones.
          */
@@ -782,6 +830,27 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /**
+         * PasswordForgotRequest
+         * @description Solicitud de correo para restablecer la contraseña.
+         */
+        PasswordForgotRequest: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+        };
+        /**
+         * PasswordResetRequest
+         * @description Token recibido por correo y nueva contraseña.
+         */
+        PasswordResetRequest: {
+            /** Token */
+            token: string;
+            /** New Password */
+            new_password: string;
         };
         /**
          * ProductCreateRequest
@@ -1099,7 +1168,10 @@ export interface operations {
     login_api_v1_auth_login_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Valor opaco por sesión generado por el cliente (BFF). Si se envía en el login, se exige en cada refresh y habilita la ventana de gracia del refresh. */
+                "X-Client-Binding"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -1132,7 +1204,10 @@ export interface operations {
     refresh_api_v1_auth_refresh_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Valor opaco por sesión generado por el cliente (BFF). Si se envía en el login, se exige en cada refresh y habilita la ventana de gracia del refresh. */
+                "X-Client-Binding"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -1172,6 +1247,70 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["RefreshTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    forgot_password_api_v1_auth_password_forgot_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordForgotRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_password_api_v1_auth_password_reset_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordResetRequest"];
             };
         };
         responses: {

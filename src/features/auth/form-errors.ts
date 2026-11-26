@@ -34,7 +34,42 @@ export const AUTH_ERROR_MESSAGES = {
     "No pudimos conectar con el servidor. Revisa tu conexión e inténtalo de nuevo en unos segundos.",
   invalidData: "Revisa los campos marcados e inténtalo de nuevo.",
   unexpected: "Algo salió mal. Inténtalo de nuevo; si persiste, contacta a soporte.",
+  invalidResetToken:
+    "El enlace para restablecer la contraseña no es válido, expiró o ya se usó. Solicita uno nuevo.",
 } as const;
+
+/**
+ * Expresa una espera en lenguaje natural ("30 segundos", "1 minuto", "2 horas").
+ *
+ * @param seconds - Segundos de `Retry-After` (≥ 0).
+ * @returns Texto en español, redondeando hacia arriba a la unidad mayor útil.
+ *
+ * @example
+ * ```ts
+ * formatRetryAfter(45); // "45 segundos"
+ * formatRetryAfter(900); // "15 minutos"
+ * ```
+ */
+export function formatRetryAfter(seconds: number): string {
+  const plural = (value: number, unit: string) => `${value} ${unit}${value === 1 ? "" : "s"}`;
+  if (seconds < 60) return plural(Math.max(1, Math.ceil(seconds)), "segundo");
+  const minutes = Math.ceil(seconds / 60);
+  if (minutes < 120) return plural(minutes, "minuto");
+  return plural(Math.ceil(minutes / 60), "hora");
+}
+
+/**
+ * Mensaje de `429 rate-limit-exceeded`, con el tiempo de espera si el backend
+ * envió `Retry-After`. No se reintenta automáticamente.
+ *
+ * @param retryAfter - Segundos de espera, si se conocen.
+ * @returns Mensaje para el banner.
+ */
+export function rateLimitMessage(retryAfter: number | undefined): string {
+  return retryAfter === undefined
+    ? AUTH_ERROR_MESSAGES.rateLimit
+    : `Demasiados intentos. Vuelve a intentarlo en ${formatRetryAfter(retryAfter)}.`;
+}
 
 function fieldFromLoc<F extends string>(
   loc: (string | number)[],
@@ -67,7 +102,11 @@ export function mapAuthError<F extends string>(
   }
 
   if (error.is(PROBLEM_TYPES.rateLimitExceeded) || error.status === 429) {
-    return { banner: { message: AUTH_ERROR_MESSAGES.rateLimit }, fieldErrors: [] };
+    return { banner: { message: rateLimitMessage(error.retry_after) }, fieldErrors: [] };
+  }
+
+  if (error.is(PROBLEM_TYPES.invalidResetToken)) {
+    return { banner: { message: AUTH_ERROR_MESSAGES.invalidResetToken }, fieldErrors: [] };
   }
 
   if (error.is(PROBLEM_TYPES.emailAlreadyExists) && (fields as readonly string[]).includes("email")) {
