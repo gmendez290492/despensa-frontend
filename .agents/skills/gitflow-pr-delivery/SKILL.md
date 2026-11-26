@@ -5,6 +5,8 @@ description: Flujo de trabajo Gitflow obligatorio para despensa-frontend desde c
 
 # Flujo de Entrega Gitflow con Validación CI/CD
 
+> **Invocación manual:** ejecuta esta skill solo cuando el usuario lo pida explícitamente (push, PR o merge son acciones externas). Nunca fusiones sin su confirmación.
+
 Sigue estrictamente estos pasos para entregar cualquier funcionalidad, corrección o mejora en `despensa-frontend`.
 
 ## Paso 1: Preparar Rama desde `develop`
@@ -36,5 +38,5 @@ Antes de hacer commit o push, ejecuta las 4 verificaciones y corrige cualquier f
 
 ## Paso 4: Verificación de GitHub Actions y Limpieza
 
-1. Inspecciona los *check runs* del Pull Request (`pull_request_read` con `method: "get_check_runs"`) y espera a que el job `Lint, Typecheck, Unit Tests & Production Build` termine en **`success`**.
-2. Una vez 100% en verde, fusiona el Pull Request (`merge_pull_request`), elimina la rama remota y local, y deja la copia local sincronizada en `develop`.
+1. Inspecciona los *check runs* del Pull Request (`gh pr checks <n> --watch` o el MCP `github` con `pull_request_read` / `method: "get_check_runs"`) y espera a que el job `Lint, Typecheck, Unit Tests & Production Build` termine en **`success`**.
+2. Una vez 100% en verde, **pide confirmación explícita al usuario** y solo entonces fusiona el Pull Request (`gh pr merge` o `merge_pull_request`), elimina la rama remota y local, y deja la copia local sincronizada en `develop`.

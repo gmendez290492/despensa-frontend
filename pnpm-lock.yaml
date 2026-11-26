@@ -233,6 +233,9 @@ importers:
       react-hook-form:
         specifier: ^7.92.0
         version: 7.92.0(@types/react@19.3.1)(react@19.3.0)
+      server-only:
+        specifier: ^0.0.1
+        version: 0.0.1
       serwist:
         specifier: ^9.6.0
         version: 9.6.0(browserslist@4.29.6)(typescript@5.9.3)
@@ -4215,6 +4218,9 @@ packages:
   seroval@1.6.12:
     resolution: {integrity: sha512-CqbIVfk/7GL3ITwZI55lcPbpQbjHZ2DD5cUj4iH7E9YsCfHNJV1mx7yNp86Z84w5IpmkZZS/2s5vPOWmVWSdQg==}
     engines: {node: '>=10'}
+
+  server-only@0.0.1:
+    resolution: {integrity: sha512-qepMx2JxAa5jjfzxG79yPPq+8BuFToHd1hm7kI+Z4zAq1ftQiP7HcxMhDDItrbtwVeLg/cY2JnKnrcFkmiswNA==}
 
   serwist@9.6.0:
     resolution: {integrity: sha512-uCKap2fCpZ+y30dcO1b3Z9BpStPjFaehWgH32msBy0rOvjBuGzDbb9mydH/oasd+B9LcFuEaGGcdhlDhZPIoYA==}
@@ -8648,6 +8654,8 @@ snapshots:
       seroval: 1.6.12
 
   seroval@1.6.12: {}
+
+  server-only@0.0.1: {}
 
   serwist@9.6.0(browserslist@4.29.6)(typescript@5.9.3):
     dependencies:

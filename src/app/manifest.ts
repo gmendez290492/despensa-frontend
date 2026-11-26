@@ -1,5 +1,11 @@
 import type { MetadataRoute } from "next";
 
+/**
+ * Web App Manifest servido en `/manifest.webmanifest` (instalación de la PWA).
+ *
+ * @returns Manifest con `display: "standalone"`, colores del sistema Stitch y `start_url: "/"`.
+ * @see https://developer.chrome.com/docs/modern-web-guidance — guía `install-web-app`.
+ */
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Despensa — Control Inteligente de Alimentos",

@@ -21,11 +21,14 @@ Sigue este procedimiento cada vez que se integre o actualice una vista provenien
 
 ## Paso 3: Adaptación de Estilos y Accesibilidad
 
+0. Antes de escribir código de UI, ejecuta la skill **`modern-web-guidance`** (`search` → `retrieve`, o las guías locales en `.agents/skills/modern-web-guidance/guides/`) para cada patrón de plataforma que aparezca en la pantalla: formularios, validación, autofill, diálogos, foco, tablas, imágenes o fechas. Respeta el objetivo Baseline de `AGENTS.md`.
+
 1. Reemplaza colores arbitrarios del HTML exportado por los tokens semánticos de `src/app/globals.css` (`bg-surface`, `bg-surface-lowest`, `bg-primary-container`, `--semaforo-*`).
-2. Sustituye modales, popovers o tabs planos por primitivas accesibles de `radix-ui`.
+2. Sustituye modales, popovers o tabs planos por la primitiva nativa que recomiende Modern Web Guidance (`<dialog>`, `popover`) cuando sea Baseline; usa `radix-ui` para patrones complejos sin equivalente nativo accesible (combobox, menús, tabs con roving focus).
 3. Verifica que todo indicador del semáforo FEFO incluya texto legible e ícono además del color.
 
 ## Paso 4: Verificación
 
-1. Añade prueba unitaria en `tests/unit/` o prueba E2E en `tests/e2e/`.
-2. Ejecuta `pnpm lint`, `pnpm typecheck`, `pnpm test` y `pnpm build`.
+1. Documenta con **JSDoc** todo componente, hook y función exportada (propósito, `@param`, `@returns`, `@example` en `src/components/ui/`, `@see` a la guía aplicada).
+2. Añade prueba unitaria en `tests/unit/` o prueba E2E en `tests/e2e/`.
+3. Ejecuta `pnpm lint`, `pnpm typecheck`, `pnpm test` y `pnpm build`.

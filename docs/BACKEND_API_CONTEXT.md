@@ -16,6 +16,8 @@ Referencia canónica para desarrolladores y subagentes de `despensa-frontend`. E
 | **Healthchecks** | `GET /health/live` (`200`), `GET /health/ready` (`200` o `503`) |
 
 > **Importante sobre rotación de Refresh Tokens:** `POST /api/v1/auth/refresh` rota e invalida inmediatamente el `refresh_token` usado. Si dos peticiones concurrentes envían el mismo `refresh_token`, FastAPI detecta posible robo y revoca toda la familia de sesión. El BFF **debe serializar el refresco con un mutex**.
+>
+> **Implementación BFF (`src/lib/auth/refresh-mutex.ts` + `refresh.ts`):** una promesa en vuelo por refresh_token (clave = SHA-256 del token) y una **ventana de gracia de 5 s** que devuelve el mismo par rotado a peticiones que salieron con la cookie antigua; cada entrada se desaloja con `setTimeout(...).unref()`. *Compromiso:* durante esos 5 s quien presente el token viejo obtiene el par nuevo (riesgo acotado frente a revocar la sesión legítima por carreras del navegador); pasado ese tiempo, el reuso llega a FastAPI y responde `401 invalid-token`. El estado es por proceso: con varias instancias hace falta un almacén compartido (Redis).
 
 ---
 
@@ -92,6 +94,8 @@ Estructura estándar devuelta por FastAPI en errores de dominio:
 
 | Pantalla en Stitch | Screen ID | Endpoints Asociados |
 | :--- | :--- | :--- |
+| **Inicio de Sesión** | `4d4e6b2187214e199d780ad47bc707ae` | `POST /auth/login` (vía BFF `/api/bff/auth/login`) |
+| **Crear Cuenta (Registro)** | `4a85f9a297184c228178ec3982dec9ed` | `POST /auth/register` + login automático (vía BFF `/api/bff/auth/register`) |
 | **Home Dashboard** | `7888102e6f53468e9258286b534611ae` | `GET /users/me`, `GET /pantries`, `GET /pantries/{id}/batches`, `GET /notifications?unread_only=true`, `GET /recipes/recommended?limit=3` |
 | **Pantry Inventory** | `bcc49240c9a6408e8d2a1583fe082fd0` | `GET /pantries/{id}/locations`, `GET /pantries/{id}/batches`, `POST /pantries/{id}/consume` |
 | **Flujo 1: Hub Entrada Agregar Producto** | `f8feeea9718f470eac8844b59e70792f` | Hub hacia Escáner, Código Manual o Producto Fresco |

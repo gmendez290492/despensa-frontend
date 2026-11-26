@@ -29,6 +29,14 @@
   --error: #ba1a1a;
   --error-container: #ffdad6;
 
+  /* Estados de formulario (Stitch: Inicio de Sesión / Crear Cuenta) */
+  --terracotta: #bd5338; /* bordes, iconos y anillos de error */
+  --terracotta-strong: #9b3f27; /* texto sobre tinte terracota (AA >= 4.5:1) */
+  --amber-status: #945e0e; /* pill "Sin conexión" */
+  --border-sand: #e7e2d8; /* bordes cálidos de tarjetas y separadores */
+  --input-border: #857f75; /* borde de campos en reposo (3.97:1 sobre blanco, WCAG 1.4.11) */
+  --input-placeholder: #686e6a; /* placeholder (5.04:1 sobre relleno del campo, AA 1.4.3) */
+
   /* Semáforo FEFO */
   --semaforo-optimo: #2e6b4e;
   --semaforo-precaucion: #b8860b;
@@ -56,6 +64,19 @@
   --color-outline-variant: var(--outline-variant);
   --color-error: var(--error);
   --color-error-container: var(--error-container);
+  --color-terracotta: var(--terracotta);
+  --color-terracotta-strong: var(--terracotta-strong);
+  --color-amber-status: var(--amber-status);
+  --color-border-sand: var(--border-sand);
+  --color-input-border: var(--input-border);
+  --color-input-placeholder: var(--input-placeholder);
+  --color-semaforo-optimo: var(--semaforo-optimo);
+  --color-semaforo-precaucion: var(--semaforo-precaucion);
+  --color-semaforo-critico: var(--semaforo-critico);
+  --color-semaforo-vencido: var(--semaforo-vencido);
+
+  /* Sombra ambiental de superficies elevadas (tarjetas de formulario) */
+  --shadow-ambient: 0 4px 20px -2px rgb(46 71 59 / 0.06), 0 2px 6px -1px rgb(0 0 0 / 0.03);
 
   --font-display: var(--font-newsreader), Georgia, serif;
   --font-sans: var(--font-manrope), system-ui, sans-serif;
@@ -65,4 +86,70 @@ body {
   background-color: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+}
+
+/* Slider de rango (preferencias de alerta) con tokens del tema. */
+.range-input {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: 44px;
+  background: transparent;
+  cursor: pointer;
+}
+.range-input::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 4px;
+  background: linear-gradient(
+    to right,
+    var(--primary-container) 0%,
+    var(--primary-container) var(--range-progress, 0%),
+    var(--surface-high) var(--range-progress, 0%),
+    var(--surface-high) 100%
+  );
+}
+.range-input::-moz-range-track {
+  height: 6px;
+  border-radius: 4px;
+  background: var(--surface-high);
+}
+.range-input::-moz-range-progress {
+  height: 6px;
+  border-radius: 4px;
+  background: var(--primary-container);
+}
+.range-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 22px;
+  width: 22px;
+  margin-top: -8px;
+  border-radius: 4px;
+  background: var(--primary-container);
+  border: 2px solid var(--surface-lowest);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.2);
+}
+.range-input::-moz-range-thumb {
+  height: 18px;
+  width: 18px;
+  border-radius: 4px;
+  background: var(--primary-container);
+  border: 2px solid var(--surface-lowest);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.2);
+}
+/*
+ * Foco visible con `outline` en el propio input (Modern Web Guidance
+ * `slider`): a diferencia de `box-shadow`, sobrevive al modo de alto
+ * contraste forzado. El anillo del thumb es solo refuerzo visual.
+ */
+.range-input:focus-visible {
+  outline: 2px solid var(--primary-container);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+.range-input:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px var(--surface-lowest), 0 0 0 5px var(--primary-container);
+}
+.range-input:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 3px var(--surface-lowest), 0 0 0 5px var(--primary-container);
 }
