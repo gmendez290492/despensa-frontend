@@ -16,6 +16,7 @@ const manrope = Manrope({
   display: "swap",
 });
 
+/** Metadatos globales: título por defecto y plantilla `%s | Despensa` para las páginas hijas. */
 export const metadata: Metadata = {
   title: {
     default: "Despensa — Control Inteligente de Alimentos",
@@ -25,12 +26,28 @@ export const metadata: Metadata = {
     "Aplicación inteligente de inventario del hogar con semáforo FEFO, recetas anti-desperdicio y modo offline.",
 };
 
+/**
+ * Viewport y `theme-color` (barra del navegador / PWA instalada).
+ *
+ * @remarks No fija `maximumScale` ni `userScalable`: bloquear el zoom rompe
+ * WCAG 1.4.4 (cambio de tamaño del texto).
+ *
+ * @see https://developer.chrome.com/docs/modern-web-guidance — guía `respect-os-text-scale`.
+ */
 export const viewport: Viewport = {
   themeColor: "#2e473b",
   width: "device-width",
   initialScale: 1,
 };
 
+/**
+ * Layout raíz: `<html lang="es">`, fuentes Newsreader/Manrope como variables CSS y
+ * {@link AppProviders} dentro de `<Suspense>` (requisito de `cacheComponents`, ya
+ * que los providers leen `useSearchParams` vía `nuqs`).
+ *
+ * @param props.children - Árbol de la ruta activa.
+ * @returns El documento HTML completo.
+ */
 export default function RootLayout({
   children,
 }: Readonly<{

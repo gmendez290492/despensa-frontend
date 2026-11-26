@@ -1,8 +1,10 @@
 import { create } from "zustand";
 import { devtools, persist } from "zustand/middleware";
 
+/** Estado de conexión mostrado en la UI (`syncing` mientras se vacía la outbox). */
 export type ConnectionStatus = "online" | "offline" | "syncing";
 
+/** Borrador local de un artículo escaneado en modo continuo (aún no enviado a FastAPI). */
 export interface ScannedDraftItem {
   tempId: string;
   barcode: string | null;
@@ -13,6 +15,7 @@ export interface ScannedDraftItem {
   expirationDate: string;
 }
 
+/** Estado global de UI (Capa 4). Prohibido guardar aquí respuestas crudas del backend. */
 export interface UiState {
   activePantryId: string | null;
   connectionStatus: ConnectionStatus;
@@ -24,6 +27,15 @@ export interface UiState {
   clearContinuousScanQueue: () => void;
 }
 
+/**
+ * Store Zustand de UI con `devtools` y `persist`. Solo se persisten
+ * `activePantryId` y `continuousScanQueue`; `connectionStatus` se recalcula.
+ *
+ * @example
+ * ```tsx
+ * const pantryId = useUiStore((state) => state.activePantryId);
+ * ```
+ */
 export const useUiStore = create<UiState>()(
   devtools(
     persist(

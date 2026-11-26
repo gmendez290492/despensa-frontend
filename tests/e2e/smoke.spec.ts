@@ -1,14 +1,10 @@
 import { expect, test } from "@playwright/test";
 
-test("renderiza la pantalla base de Despensa y expone el manifest PWA", async ({
-  page,
-  request,
-}) => {
+test("sin sesión, / redirige a /login y expone el manifest PWA", async ({ page, request }) => {
   await page.goto("/");
+  await expect(page).toHaveURL(/\/login$/);
   await expect(
-    page.getByRole("heading", {
-      name: /Control inteligente de tu despensa/i,
-    }),
+    page.getByRole("heading", { name: /Bienvenido de vuelta a tu despensa/i }),
   ).toBeVisible();
 
   const manifestResponse = await request.get("/manifest.webmanifest");

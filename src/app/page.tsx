@@ -1,62 +1,75 @@
-import { ShieldCheck, Sparkles, WifiOff } from "lucide-react";
+import { Suspense } from "react";
+import { BrandMark } from "@/components/brand/brand-mark";
+import { LogoutButton } from "@/features/auth/components/logout-button";
+import { getCurrentUser } from "@/lib/auth/session";
 
+/*
+ * TEMPORAL: placeholder autenticado hasta implementar el Home Dashboard de
+ * Stitch. Solo saluda al usuario y permite cerrar sesión.
+ */
+
+async function Greeting() {
+  const user = await getCurrentUser();
+
+  if (!user) {
+    // `proxy.ts` ya redirige sin cookies; esto cubre un access token que el
+    // backend rechaza. `/login` rebotaría a `/` (hay cookie), así que se pasa
+    // por el refresh GET: rota la sesión o limpia cookies y lleva a /login.
+    // Navegación completa (<a>, no <Link>): es un Route Handler con redirect.
+    return (
+      <p className="text-sm text-muted-foreground">
+        Tu sesión expiró.{" "}
+        <a
+          href="/api/bff/auth/refresh?next=%2F"
+          className="font-semibold text-primary-container underline underline-offset-4"
+        >
+          Inicia sesión de nuevo
+        </a>
+      </p>
+    );
+  }
+
+  return (
+    <>
+      <h1 className="font-display text-4xl font-normal tracking-tight text-foreground">
+        Hola, {user.full_name}
+      </h1>
+      <p className="mt-2 text-sm text-muted-foreground">
+        Tu panel de despensa estará disponible muy pronto.
+      </p>
+      <div className="mt-8">
+        <LogoutButton />
+      </div>
+    </>
+  );
+}
+
+function GreetingSkeleton() {
+  return (
+    <div role="status" aria-label="Cargando tu sesión" className="space-y-3">
+      <div className="h-10 w-3/4 motion-safe:animate-pulse rounded-[4px] bg-surface-high" />
+      <div className="h-4 w-1/2 motion-safe:animate-pulse rounded-[4px] bg-surface-high" />
+    </div>
+  );
+}
+
+/**
+ * Home autenticada (placeholder temporal). La parte dinámica (`Greeting`) va en
+ * `<Suspense>` para que el shell se prerenderice con `cacheComponents`.
+ *
+ * @returns La página principal.
+ */
 export default function HomePage() {
   return (
-    <main className="flex flex-1 flex-col items-center justify-center px-6 py-16">
-      <div className="w-full max-w-2xl rounded-2xl border border-outline-variant/50 bg-surface-lowest p-8 shadow-sm sm:p-12">
-        <span className="inline-flex items-center gap-2 rounded-full bg-primary-fixed px-3 py-1 text-xs font-semibold tracking-wider text-primary uppercase">
-          Despensa PWA · Next.js 16 + React 19
-        </span>
-
-        <h1 className="mt-6 font-display text-4xl font-medium tracking-tight text-foreground sm:text-5xl">
-          Control inteligente de tu despensa, con o sin conexión.
-        </h1>
-
-        <p className="mt-4 text-base leading-relaxed text-muted-foreground">
-          Base arquitectónica inicial lista: Server Components (BFF), contratos
-          OpenAPI 3.1 estrictos, gestión de estado por capas con{" "}
-          <strong className="font-semibold text-foreground">Zustand</strong> y{" "}
-          <strong className="font-semibold text-foreground">
-            TanStack Query
-          </strong>
-          , persistencia local en{" "}
-          <strong className="font-semibold text-foreground">IndexedDB</strong> y
-          Service Worker con{" "}
-          <strong className="font-semibold text-foreground">Serwist</strong>.
-        </p>
-
-        <div className="mt-8 grid gap-4 sm:grid-cols-3">
-          <div className="rounded-xl bg-surface-low p-4">
-            <ShieldCheck className="h-5 w-5 text-primary-container" />
-            <h2 className="mt-2 text-sm font-semibold text-foreground">
-              BFF + Cookies HttpOnly
-            </h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Rotación segura de JWT contra FastAPI sin exponer tokens en JS.
-            </p>
-          </div>
-
-          <div className="rounded-xl bg-surface-low p-4">
-            <WifiOff className="h-5 w-5 text-secondary" />
-            <h2 className="mt-2 text-sm font-semibold text-foreground">
-              Cola Offline Outbox
-            </h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Lectura y registro de lotes en pasillos sin señal vía Dexie.
-            </p>
-          </div>
-
-          <div className="rounded-xl bg-surface-low p-4">
-            <Sparkles className="h-5 w-5 text-primary-container" />
-            <h2 className="mt-2 text-sm font-semibold text-foreground">
-              Diseño Google Stitch
-            </h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Tokens semánticos FEFO, Newsreader y Manrope listos para UI.
-            </p>
-          </div>
-        </div>
-      </div>
+    <main className="mx-auto flex w-full max-w-[430px] flex-1 flex-col px-5 py-6 md:max-w-2xl">
+      <header className="pb-10">
+        <BrandMark />
+      </header>
+      <section className="rounded-[4px] border border-border-sand bg-surface-lowest p-6 shadow-ambient">
+        <Suspense fallback={<GreetingSkeleton />}>
+          <Greeting />
+        </Suspense>
+      </section>
     </main>
   );
 }
