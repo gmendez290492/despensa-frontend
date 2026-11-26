@@ -41,3 +41,6 @@ next-env.d.ts
 
 # claude code (configuración personal)
 .claude/settings.local.json
+
+# symlink local de la skill instalada (copia versionada en .agents/skills/modern-web-guidance)
+.claude/skills/modern-web-guidance
