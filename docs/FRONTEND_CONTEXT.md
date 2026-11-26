@@ -18,6 +18,7 @@
 | Arquitectura `.agents/` + subagentes y skills | ✅ En `develop` | PR #1, PR #2 |
 | Integración de **Modern Web Guidance** en reglas y agentes (Claude Code **y Antigravity** sincronizados) | ✅ En PR #3 | `AGENTS.md §7`, `stitch-ui-builder`, `qa-frontend-auditor`, `implement-stitch-screen` |
 | **Auth: login, registro, logout y BFF** | ✅ En PR #3 | Ver §2 |
+| **Issue #4** (adaptación a backend PR #10: rate limit, `sid`, binding, recuperación de contraseña) | ✅ En PR #3 | Ver §2 "Issue #4" |
 | Auditoría MWG del código de auth | ✅ Aplicada | Ver §3 |
 | Documentación **JSDoc** de exports | ✅ 200/200 exports en `src/` | Ver §4 |
 | Entrega por PR a `develop` | 🟡 PR #3 abierto, CI en verde | Merge solo con confirmación explícita del usuario |
@@ -29,7 +30,7 @@
 |---|---|
 | `pnpm lint` | ✅ 0 errores |
 | `pnpm typecheck` | ✅ App + SW |
-| `pnpm test` | ✅ 187/187 (16 archivos) |
+| `pnpm test` | ✅ 226/226 (18 archivos) |
 | `pnpm build` | ✅ 13 rutas · `public/sw.js` precachea 29 URLs (1.02 MB) |
 | Playwright E2E | ⚠️ No ejecutado en esta sesión (requiere FastAPI local) |
 
@@ -43,6 +44,8 @@
 |---|---|---|
 | `/login` | "Despensa - Inicio de Sesión" · `4d4e6b2187214e199d780ad47bc707ae` | `src/features/auth/components/login-form.tsx` |
 | `/registro` | "Despensa - Crear Cuenta (Registro)" · `4a85f9a297184c228178ec3982dec9ed` | `src/features/auth/components/register-form.tsx` |
+| `/recuperar-contrasena` | — (sin pantalla Stitch; reutiliza layout de auth) | `src/features/auth/components/forgot-password-form.tsx` |
+| `/reset-password` | — (ruta fijada por el correo del backend) | `src/features/auth/components/reset-password-form.tsx` |
 | `/offline` | — (fallback del SW) | `src/app/offline/page.tsx` |
 | `/` | — (placeholder autenticado) | `src/app/page.tsx` |
 
@@ -58,6 +61,16 @@ Primitivas UI reutilizables en `src/components/ui/`: `Alert`, `Button`, `TextFie
 - `src/proxy.ts` (sustituye a `middleware.ts` en Next 16): protección optimista por presencia de cookie; con solo refresh_token redirige a `GET /api/bff/auth/refresh?next=`.
 - `safeRedirectPath` bloquea open redirects (`//`, absolutas, `\`, control chars, `/api/*`, rutas de auth).
 - Errores RFC 7807 en todo el stack (`ProblemDetailError`) y `X-Correlation-ID` de punta a punta; el banner de error muestra "Código de soporte".
+
+### Issue #4 (backend #9 / PR #10)
+
+1. **IP del cliente:** middleware `forwardClientIp` (`src/lib/api/server-client.ts`) reenvía a FastAPI `X-Forwarded-For` con la IP que añadió el proxy de confianza (`src/lib/api/client-ip.ts`, `TRUSTED_PROXY_HOPS`, defecto 1). Nunca reenvía lo que envía el navegador. En FastAPI, `FORWARDED_ALLOW_IPS` debe incluir la IP del servidor Next.
+2. **429:** `parseRetryAfter` (segundos o IMF-fixdate) → `ProblemDetailError.retry_after`; el BFF reenvía `Retry-After` y el formulario muestra cuánto esperar.
+3. **`sid`:** un access antiguo recibe 401 `invalid-token` → `authenticatedRequest` refresca y reintenta (cubierto en `session.test.ts`).
+4. **Logout S5:** `GET /api/bff/auth/logout` (solo `Sec-Fetch-Site: same-origin|none`) borra cookies y 303 a `/login`; `LogoutButton` navega a él si el POST falla.
+5. **Recuperación:** `/api/bff/auth/password/{forgot,reset}`. Reset borra cookies (FastAPI revoca todas las sesiones), quita el token de la URL con `history.replaceState` y la ruta se sirve con `Referrer-Policy: no-referrer` + `Cache-Control: no-store`.
+6. **`X-Client-Binding`:** 32 bytes base64url por sesión en cookie `HttpOnly` `despensa_client_binding`, enviado en login y refresh. Sesiones con binding: mutex sin ventana de gracia (la gestiona FastAPI, 10 s); sesiones legacy: gracia de 5 s.
+7. **E2E:** el rate limit del backend bloquea las suites; arrancar FastAPI con `AUTH_RATE_LIMIT_MAX_ATTEMPTS=1000`, `REGISTER_RATE_LIMIT_MAX_ATTEMPTS=1000` y `AUTH_EMAIL_RATE_LIMIT_MAX_ATTEMPTS=1000`.
 
 ### Offline / PWA
 
@@ -92,7 +105,7 @@ Ya cumplía antes: `<form>` + `<label for>`, `type="email"`, toggle "mostrar con
 ### Hallazgos abiertos (requieren decisión)
 
 1. **Doble campo de contraseña** (`confirm_password`): la guía de registro desaconseja pedirla dos veces. Se mantiene porque lo pide el diseño Stitch. *Decisión de producto pendiente.*
-2. **"¿Olvidaste tu contraseña?"**: la guía de login lo recomienda, pero el OpenAPI no expone endpoint de recuperación (`/api/v1/auth/*` solo tiene login, register, refresh, logout). Pendiente del backend.
+2. ~~"¿Olvidaste tu contraseña?"~~ ✅ Resuelto con el issue #4 (falta diseño en Stitch para las dos pantallas nuevas).
 3. **Tamaños en `px`** (`text-[13px]`, `text-[15px]`…) heredados del export de Stitch: `respect-os-text-scale` recomienda unidades relativas. El root font-size no se fija (correcto). Migrar a `rem` en una pasada de tokens tipográficos.
 4. **Contraste del track del slider** (`--surface-high` vs fondo): verificar ≥ 3:1.
 5. Botón de envío `disabled` cuando no hay conexión: su `aria-describedby` no se lee porque un botón deshabilitado no recibe foco. El texto visible lo compensa; valorar `aria-disabled`.
@@ -113,13 +126,13 @@ Ya cumplía antes: `<form>` + `<label for>`, `type="email"`, toggle "mostrar con
 - Windows + pnpm. `core.symlinks=false`: el enlace `.claude/skills/modern-web-guidance` es local; tras clonar, `npx modern-web-guidance@latest install`.
 - La CLI `npx modern-web-guidance` necesita red; sin ella, leer las guías locales (ver arriba).
 - Aviso no bloqueante de Vite en `vitest.config.mts`: usar `import.meta.dirname` en lugar de `__dirname`.
-- Variables (ver `.env.example`): `BACKEND_API_URL`, `APP_ORIGIN`, `AUTH_COOKIE_SECURE` (opcional), `NEXT_PUBLIC_APP_NAME`, `NEXT_PUBLIC_APP_URL`.
+- Variables (ver `.env.example`): `BACKEND_API_URL`, `APP_ORIGIN`, `AUTH_COOKIE_SECURE` (opcional), `TRUSTED_PROXY_HOPS` (opcional), `NEXT_PUBLIC_APP_NAME`, `NEXT_PUBLIC_APP_URL`.
 
 ---
 
 ## 6. Próximos pasos
 
-1. Ejecutar E2E de Playwright con FastAPI local (`auth.spec.ts`, `offline.spec.ts`, `smoke.spec.ts`).
+1. Ejecutar E2E de Playwright con FastAPI local (con las variables de rate limit de §2 "Issue #4") y añadir E2E de recuperación de contraseña.
 2. Revisar y fusionar el PR #3 en `develop` (solo con confirmación explícita), borrar la rama y sincronizar `develop` en local.
 3. Resolver los hallazgos abiertos de §3.
 4. Siguiente pantalla Stitch: Home Dashboard (lotes FEFO, semáforo, alertas) con `implement-stitch-screen`.
