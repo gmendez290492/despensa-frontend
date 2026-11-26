@@ -24,12 +24,15 @@ vi.mock("next/headers", () => nextHeadersMock(jar as ReturnType<typeof createCoo
 
 const { POST: login } = await import("@/app/api/bff/auth/login/route");
 const { POST: register } = await import("@/app/api/bff/auth/register/route");
-const { POST: logout } = await import("@/app/api/bff/auth/logout/route");
+const { POST: logout, GET: logoutGet } = await import("@/app/api/bff/auth/logout/route");
+const { POST: forgotPassword } = await import("@/app/api/bff/auth/password/forgot/route");
+const { POST: resetPassword } = await import("@/app/api/bff/auth/password/reset/route");
 const { POST: refreshPost, GET: refreshGet } = await import("@/app/api/bff/auth/refresh/route");
 
 const APP = "http://localhost:3000";
 const ACCESS = "despensa_access_token";
 const REFRESH = "despensa_refresh_token";
+const BINDING = "despensa_client_binding";
 
 const user = {
   id: "11111111-1111-1111-1111-111111111111",
@@ -120,7 +123,7 @@ describe("POST /api/bff/auth/login", () => {
     expect(text).not.toMatch(/secret|access_token|refresh_token/);
 
     const names = jar.sets.map((s) => s.name).sort();
-    expect(names).toEqual([ACCESS, REFRESH]);
+    expect(names).toEqual([ACCESS, BINDING, REFRESH]);
     for (const cookie of jar.sets) {
       expect(cookie.options).toMatchObject({ httpOnly: true, sameSite: "lax", path: "/" });
       expect(cookie.options.maxAge).toBeGreaterThan(0);
@@ -386,5 +389,215 @@ describe("/api/bff/auth/refresh", () => {
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe(`${APP}/despensa?q=1`);
     expect(jar.values.get(ACCESS)).toMatch(/^at-secret-/);
+  });
+});
+
+describe("X-Client-Binding (despensa-frontend#4, punto 8)", () => {
+  it("el login genera un binding opaco, lo envía a FastAPI y lo guarda en su cookie HttpOnly", async () => {
+    await login(req("/api/bff/auth/login", { headers: sameOriginJson, body: credentials }));
+    const [loginCall] = calls("POST", "/api/v1/auth/login");
+    const sent = (loginCall![0] as Request).headers.get("x-client-binding");
+    expect(sent).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    const cookie = jar.sets.find((c) => c.name === BINDING);
+    expect(cookie?.value).toBe(sent);
+    expect(cookie?.options).toMatchObject({ httpOnly: true, sameSite: "lax" });
+  });
+
+  it("el registro con login automático también abre la sesión con binding", async () => {
+    await register(
+      req("/api/bff/auth/register", {
+        headers: sameOriginJson,
+        body: { ...credentials, full_name: "Ana", timezone: "UTC", alert_days_before: 3 },
+      }),
+    );
+    const [loginCall] = calls("POST", "/api/v1/auth/login");
+    expect((loginCall![0] as Request).headers.get("x-client-binding")).toBe(jar.values.get(BINDING));
+  });
+
+  it("el refresh reenvía el binding de la cookie y lo conserva", async () => {
+    jar.reset({ [REFRESH]: "rt-bound-1", [BINDING]: "binding-de-la-sesion" });
+    const response = await refreshPost(req("/api/bff/auth/refresh", { headers: sameOriginJson }));
+    expect(response.status).toBe(204);
+    const [refreshCall] = calls("POST", "/api/v1/auth/refresh");
+    expect((refreshCall![0] as Request).headers.get("x-client-binding")).toBe("binding-de-la-sesion");
+    expect(jar.values.get(BINDING)).toBe("binding-de-la-sesion");
+  });
+
+  it("una sesión anterior sin binding refresca sin la cabecera", async () => {
+    jar.reset({ [REFRESH]: "rt-legacy-1" });
+    await refreshPost(req("/api/bff/auth/refresh", { headers: sameOriginJson }));
+    const [refreshCall] = calls("POST", "/api/v1/auth/refresh");
+    expect((refreshCall![0] as Request).headers.has("x-client-binding")).toBe(false);
+  });
+
+  it("un binding rechazado (401) cierra la sesión local y borra también la cookie del binding", async () => {
+    routes["POST /api/v1/auth/refresh"] = () =>
+      new Response(
+        JSON.stringify({
+          type: "https://despensa.api/errors/invalid-token",
+          title: "Unauthorized",
+          status: 401,
+        }),
+        { status: 401, headers: { "Content-Type": "application/problem+json" } },
+      );
+    jar.reset({ [REFRESH]: "rt-bound-2", [BINDING]: "binding-equivocado" });
+    const response = await refreshPost(req("/api/bff/auth/refresh", { headers: sameOriginJson }));
+    expect(response.status).toBe(401);
+    expect(jar.values.has(REFRESH)).toBe(false);
+    expect(jar.values.has(BINDING)).toBe(false);
+  });
+});
+
+describe("X-Forwarded-For (despensa-frontend#4, punto 1)", () => {
+  it("reenvía a FastAPI la IP que añadió el proxy de confianza, no la que inventa el navegador", async () => {
+    jar.requestHeaders = new Headers({ "x-forwarded-for": "6.6.6.6, 203.0.113.7" });
+    await login(req("/api/bff/auth/login", { headers: sameOriginJson, body: credentials }));
+    expect(fetchMock).toHaveBeenCalled();
+    for (const [input] of fetchMock.mock.calls) {
+      expect((input as Request).headers.get("x-forwarded-for")).toBe("203.0.113.7");
+    }
+  });
+
+  it("no envía la cabecera si la IP no es válida", async () => {
+    jar.requestHeaders = new Headers({ "x-forwarded-for": "<script>" });
+    await login(req("/api/bff/auth/login", { headers: sameOriginJson, body: credentials }));
+    const [loginCall] = calls("POST", "/api/v1/auth/login");
+    expect((loginCall![0] as Request).headers.has("x-forwarded-for")).toBe(false);
+  });
+});
+
+describe("429 con Retry-After (despensa-frontend#4, punto 2)", () => {
+  it("reenvía Retry-After en la cabecera y como retry_after en el problem+json", async () => {
+    routes["POST /api/v1/auth/login"] = () =>
+      new Response(
+        JSON.stringify({
+          type: "https://despensa.api/errors/rate-limit-exceeded",
+          title: "Too Many Requests",
+          status: 429,
+        }),
+        {
+          status: 429,
+          headers: { "Content-Type": "application/problem+json", "Retry-After": "540" },
+        },
+      );
+    const response = await login(
+      req("/api/bff/auth/login", { headers: sameOriginJson, body: credentials }),
+    );
+    expect(response.status).toBe(429);
+    expect(response.headers.get("retry-after")).toBe("540");
+    expect(await response.json()).toMatchObject({ status: 429, retry_after: 540 });
+  });
+});
+
+describe("GET /api/bff/auth/logout (S5)", () => {
+  it("same-origin: revoca, borra cookies y redirige 303 a /login", async () => {
+    jar.reset({ [ACCESS]: "at", [REFRESH]: "rt-logout-get", [BINDING]: "b" });
+    const response = await logoutGet(
+      req("/api/bff/auth/logout", { method: "GET", headers: { "Sec-Fetch-Site": "same-origin" } }),
+    );
+    expect(response.status).toBe(303);
+    expect(new URL(response.headers.get("location")!).pathname).toBe("/login");
+    expect(calls("POST", "/api/v1/auth/logout")).toHaveLength(1);
+    expect([...jar.values.keys()]).toEqual([]);
+  });
+
+  it.each([["cross-site"], ["same-site"], [undefined]])(
+    "Sec-Fetch-Site=%s: redirige a /login sin tocar la sesión (CSRF)",
+    async (site) => {
+      jar.reset({ [ACCESS]: "at", [REFRESH]: "rt-keep" });
+      const response = await logoutGet(
+        req("/api/bff/auth/logout", {
+          method: "GET",
+          headers: site ? { "Sec-Fetch-Site": site } : {},
+        }),
+      );
+      expect(response.status).toBe(303);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(jar.values.get(REFRESH)).toBe("rt-keep");
+    },
+  );
+});
+
+describe("/api/bff/auth/password/* (despensa-frontend#4, puntos 6 y 7)", () => {
+  const token = "t".repeat(43);
+
+  it("forgot: 202 con el mensaje genérico de FastAPI", async () => {
+    const detail = "Si existe una cuenta con ese correo, recibirás un enlace...";
+    routes["POST /api/v1/auth/password/forgot"] = () => json({ detail }, 202);
+    const response = await forgotPassword(
+      req("/api/bff/auth/password/forgot", {
+        headers: sameOriginJson,
+        body: { email: "nadie@example.com" },
+      }),
+    );
+    expect(response.status).toBe(202);
+    expect(await response.json()).toEqual({ detail });
+  });
+
+  it("forgot: 400 sin llamar al backend si el correo no es válido; 403 con Origin ajeno", async () => {
+    const bad = await forgotPassword(
+      req("/api/bff/auth/password/forgot", { headers: sameOriginJson, body: { email: "no-es-correo" } }),
+    );
+    expect(bad.status).toBe(400);
+    const evil = await forgotPassword(
+      req("/api/bff/auth/password/forgot", {
+        headers: { ...sameOriginJson, Origin: "https://evil.com" },
+        body: { email: "ana@example.com" },
+      }),
+    );
+    expect(evil.status).toBe(403);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("reset: 204, reenvía token y contraseña y borra las cookies (FastAPI revocó todas las sesiones)", async () => {
+    let sent: unknown;
+    routes["POST /api/v1/auth/password/reset"] = (_url, body) => {
+      sent = body;
+      return new Response(null, { status: 204 });
+    };
+    jar.reset({ [ACCESS]: "at", [REFRESH]: "rt-before-reset", [BINDING]: "b" });
+    const response = await resetPassword(
+      req("/api/bff/auth/password/reset", {
+        headers: sameOriginJson,
+        body: { token, new_password: "otra-clave-segura" },
+      }),
+    );
+    expect(response.status).toBe(204);
+    expect(sent).toEqual({ token, new_password: "otra-clave-segura" });
+    expect([...jar.values.keys()]).toEqual([]);
+  });
+
+  it("reset: 400 invalid-reset-token se preserva y no toca las cookies", async () => {
+    routes["POST /api/v1/auth/password/reset"] = () =>
+      new Response(
+        JSON.stringify({
+          type: "https://despensa.api/errors/invalid-reset-token",
+          title: "Bad Request",
+          status: 400,
+          detail: "Token inválido",
+        }),
+        { status: 400, headers: { "Content-Type": "application/problem+json" } },
+      );
+    jar.reset({ [REFRESH]: "rt-keep" });
+    const response = await resetPassword(
+      req("/api/bff/auth/password/reset", {
+        headers: sameOriginJson,
+        body: { token, new_password: "otra-clave-segura" },
+      }),
+    );
+    expect(response.status).toBe(400);
+    expect((await response.json()).type).toContain("invalid-reset-token");
+    expect(jar.values.get(REFRESH)).toBe("rt-keep");
+  });
+
+  it("reset: 400 sin llamar al backend si la contraseña es corta", async () => {
+    const response = await resetPassword(
+      req("/api/bff/auth/password/reset", {
+        headers: sameOriginJson,
+        body: { token, new_password: "corta" },
+      }),
+    );
+    expect(response.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

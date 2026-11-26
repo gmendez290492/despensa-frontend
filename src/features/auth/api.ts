@@ -3,9 +3,11 @@ import { bffFetch, bffJson } from "@/lib/api/bff-fetch";
 import { ProblemDetailError } from "@/lib/api/problem";
 import {
   toRegisterPayload,
+  type ForgotPasswordInput,
   type LoginInput,
   type RegisterFormValues,
   type RegisterPayload,
+  type ResetPasswordInput,
 } from "@/lib/auth/schemas";
 
 /** Usuario tal como lo devuelve FastAPI (tipo generado desde OpenAPI, nunca manual). */
@@ -36,7 +38,12 @@ export const BFF_AUTH_ROUTES = {
   logout: "/api/bff/auth/logout",
   me: "/api/bff/auth/me",
   refresh: "/api/bff/auth/refresh",
+  forgotPassword: "/api/bff/auth/password/forgot",
+  resetPassword: "/api/bff/auth/password/reset",
 } as const;
+
+/** Respuesta de `POST /api/bff/auth/password/forgot` (tipo generado). */
+export type MessageResponse = components["schemas"]["MessageResponse"];
 
 /**
  * `POST /api/bff/auth/login`. El BFF guarda los tokens en cookies `HttpOnly`;
@@ -77,6 +84,28 @@ export async function logoutRequest(): Promise<void> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
   });
+}
+
+/**
+ * `POST /api/bff/auth/password/forgot`. Responde igual exista o no la cuenta.
+ *
+ * @param input - `{ email }` validado con `forgotPasswordSchema`.
+ * @returns `{ detail }` con el mensaje genérico a mostrar.
+ * @throws {ProblemDetailError} `429 rate-limit-exceeded` (con `retry_after`), red, etc.
+ */
+export function forgotPasswordRequest(input: ForgotPasswordInput): Promise<MessageResponse> {
+  return bffJson<MessageResponse>(BFF_AUTH_ROUTES.forgotPassword, { method: "POST", json: input });
+}
+
+/**
+ * `POST /api/bff/auth/password/reset`. Al tener éxito el backend revoca todas
+ * las sesiones del usuario y el BFF borra las cookies locales.
+ *
+ * @param input - `{ token, new_password }`.
+ * @throws {ProblemDetailError} `400 invalid-reset-token`, `422`, `429`, red.
+ */
+export async function resetPasswordRequest(input: ResetPasswordInput): Promise<void> {
+  await bffFetch(BFF_AUTH_ROUTES.resetPassword, { method: "POST", json: input });
 }
 
 /** Usuario actual o `null` si no hay sesión (401). */

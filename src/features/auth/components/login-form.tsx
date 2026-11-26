@@ -13,6 +13,7 @@ import { TextField } from "@/components/ui/text-field";
 import { useIsOffline } from "@/components/connection-status-pill";
 import { mapAuthError, withNext, type AuthBanner } from "@/features/auth/form-errors";
 import { useLoginMutation } from "@/features/auth/client";
+import { FORGOT_PASSWORD_PATH } from "@/lib/auth/constants";
 import { safeRedirectPath } from "@/lib/auth/redirect";
 import { loginSchema, type LoginFormValues, type LoginInput } from "@/lib/auth/schemas";
 
@@ -22,7 +23,7 @@ const labelClass = "text-[12.5px] tracking-wider uppercase";
 
 /**
  * Formulario de inicio de sesión (Stitch "Inicio de Sesión"). Lee `?next=` y
- * `?registered=1`: envolver en `<Suspense>`.
+ * `?registered=1` / `?reset=1`: envolver en `<Suspense>`.
  *
  * @remarks
  * - El correo usa `autoComplete="username"` (lo reconocen los gestores de
@@ -41,6 +42,7 @@ export function LoginForm() {
   const searchParams = useSearchParams();
   const next = searchParams.get("next");
   const justRegistered = searchParams.get("registered") === "1";
+  const justReset = searchParams.get("reset") === "1";
 
   const offline = useIsOffline();
   const login = useLoginMutation();
@@ -97,6 +99,10 @@ export function LoginForm() {
           <Alert tone="success" className="mb-5">
             Tu cuenta fue creada. Inicia sesión para continuar.
           </Alert>
+        ) : justReset ? (
+          <Alert tone="success" className="mb-5">
+            Tu contraseña se actualizó y cerramos tus otras sesiones. Inicia sesión con la nueva.
+          </Alert>
         ) : null}
 
         <form onSubmit={onSubmit} noValidate className="space-y-4" aria-label="Iniciar sesión">
@@ -123,6 +129,14 @@ export function LoginForm() {
             label="Contraseña"
             labelClassName={labelClass}
             autoComplete="current-password"
+            labelAction={
+              <Link
+                href={FORGOT_PASSWORD_PATH}
+                className="inline-flex min-h-11 items-center text-[12.5px] font-semibold text-primary-container underline-offset-4 hover:underline focus-visible:rounded-[4px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-container"
+              >
+                ¿Olvidaste tu contraseña?
+              </Link>
+            }
             enterKeyHint="done"
             required
             maxLength={128}

@@ -7,7 +7,9 @@
  */
 export {
   useCurrentUser,
+  useForgotPasswordMutation,
   useLoginMutation,
   useLogoutMutation,
   useRegisterMutation,
+  useResetPasswordMutation,
 } from "@/features/auth/hooks";

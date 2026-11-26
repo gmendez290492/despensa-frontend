@@ -21,6 +21,16 @@ const nextConfig: NextConfig = {
           { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=()" },
         ],
       },
+      {
+        // El enlace del correo lleva el token de restablecimiento en la URL:
+        // nunca debe salir en `Referer`. Va después de la regla global porque
+        // en Next la última regla que fija una cabecera es la que gana.
+        source: "/reset-password",
+        headers: [
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "Cache-Control", value: "no-store" },
+        ],
+      },
     ];
   },
   turbopack: {
