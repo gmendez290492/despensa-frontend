@@ -35,6 +35,10 @@ Aplicación web y PWA *Offline-First* construida sobre **Next.js 16 (App Router 
    - Las mutaciones realizadas sin conexión se registran en **Dexie (`src/lib/db/offline-db.ts`)** siguiendo el patrón *Client Outbox* y marcan estado `"conflict"` si al reconectar FastAPI responde un error de negocio (ej. `400 insufficient-stock`).
 6. **Sistema de Diseño Google Stitch:**
    - Usa exclusivamente los tokens semánticos definidos en `src/app/globals.css` (`bg-surface`, `bg-primary-container`, `--semaforo-*`, tipografías `font-display` *Newsreader* y `font-sans` *Manrope*) y primitivas accesibles de `radix-ui`.
+7. **Plataforma Web Moderna y Documentación:**
+   - This project's Baseline target is Baseline Widely available.
+   - Sigue [Modern Web Guidance](https://developer.chrome.com/docs/modern-web-guidance) ([guías para humanos](https://web.dev/explore/mwg-for-humans)) para patrones de plataforma: formularios, foco, diálogos, rendimiento y seguridad. Cualquier función fuera del objetivo Baseline requiere *feature detection* y *fallback*.
+   - Documenta con **JSDoc** todo componente, hook y función exportada: propósito, `@param`, `@returns`, `@example` en `src/components/ui/` y `@see` hacia la guía aplicada.
 
 ## 2. Subagentes y Skills del Proyecto (`.agents/`)
 
@@ -47,6 +51,8 @@ Aplicación web y PWA *Offline-First* construida sobre **Next.js 16 (App Router 
   - `implement-stitch-screen`: Flujo completo desde Stitch MCP hasta ruta Next.js integrada.
   - `offline-outbox-mutation`: Receta estándar para mutaciones optimistas con soporte sin red y resolución de conflictos.
   - `gitflow-pr-delivery`: Flujo de ramas, puertas de calidad y entrega por Pull Request con CI en verde.
+
+- **Contexto vivo:** antes de empezar, lee `docs/FRONTEND_CONTEXT.md` (estado de las entregas, decisiones, hallazgos abiertos y próximos pasos) y actualízalo al cerrar cada bloque de trabajo.
 
 ## 3. Puertas de Calidad y Gitflow
 
