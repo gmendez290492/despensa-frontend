@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+:root {
+  /* Sistema de Diseño Google Stitch — Despensa Pantry Tracker App */
+  --background: #faf9f4;
+  --foreground: #1b1c19;
+  --surface: #faf9f4;
+  --surface-low: #f5f4ef;
+  --surface-container: #efeee9;
+  --surface-high: #e9e8e3;
+  --surface-lowest: #ffffff;
+
+  --primary: #183126;
+  --primary-container: #2e473b;
+  --primary-foreground: #ffffff;
+  --primary-fixed: #cce9d9;
+
+  --secondary: #7b5800;
+  --secondary-container: #fdc34d;
+  --secondary-foreground: #ffffff;
+
+  --tertiary: #591000;
+  --tertiary-container: #7b230c;
+
+  --muted-foreground: #424844;
+  --outline: #727974;
+  --outline-variant: #c2c8c2;
+
+  --error: #ba1a1a;
+  --error-container: #ffdad6;
+
+  /* Semáforo FEFO */
+  --semaforo-optimo: #2e6b4e;
+  --semaforo-precaucion: #b8860b;
+  --semaforo-critico: #c2410c;
+  --semaforo-vencido: #ba1a1a;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-low: var(--surface-low);
+  --color-surface-container: var(--surface-container);
+  --color-surface-high: var(--surface-high);
+  --color-surface-lowest: var(--surface-lowest);
+  --color-primary: var(--primary);
+  --color-primary-container: var(--primary-container);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-fixed: var(--primary-fixed);
+  --color-secondary: var(--secondary);
+  --color-secondary-container: var(--secondary-container);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-outline: var(--outline);
+  --color-outline-variant: var(--outline-variant);
+  --color-error: var(--error);
+  --color-error-container: var(--error-container);
+
+  --font-display: var(--font-newsreader), Georgia, serif;
+  --font-sans: var(--font-manrope), system-ui, sans-serif;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}
