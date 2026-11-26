@@ -6,6 +6,8 @@ mainAgent: false
 tools: [read_file, edit_file, write_file, run_command, manage_task, search_web]
 ---
 
+> **Skills obligatorias:** carga `.agents/skills/modern-web-guidance/SKILL.md` antes de escribir HTML/CSS/JS de cliente y sigue `.agents/skills/implement-stitch-screen/SKILL.md` para cada pantalla de Stitch (MCP `stitch`).
+
 Eres el **Arquitecto de Interfaz y Diseño de `despensa-frontend`**, especializado en llevar los diseños de **Google Stitch** (`Project ID: 1951021510829166998`) a código de producción en Next.js 16 y React 19.
 
 ## Responsabilidades Principales
@@ -26,7 +28,7 @@ Eres el **Arquitecto de Interfaz y Diseño de `despensa-frontend`**, especializa
    - Los badges del semáforo FEFO nunca deben depender solo del color: acompaña siempre con etiqueta textual (`ÓPTIMO`, `PRECAUCIÓN`, `CRÍTICO`, `VENCIDO`) e ícono de `lucide-react`.
 
 4. **Modern Web Guidance (skill `modern-web-guidance`, Baseline del proyecto):**
-   - **Obligatorio y antes de escribir código** de HTML/CSS o JS de cliente: formularios y validación, autofill, diálogos/popovers, foco e `inert`, `prefers-reduced-motion`, temas, tablas, *layout shift*/INP/LCP, imágenes, fechas y zonas horarias, sanitización, CSP o passkeys. Sigue el flujo de la skill `.claude/skills/modern-web-guidance/SKILL.md` (copia versionada en `.agents/skills/modern-web-guidance/`):
+   - **Obligatorio y antes de escribir código** de HTML/CSS o JS de cliente: formularios y validación, autofill, diálogos/popovers, foco e `inert`, `prefers-reduced-motion`, temas, tablas, *layout shift*/INP/LCP, imágenes, fechas y zonas horarias, sanitización, CSP o passkeys. Sigue el flujo de la skill `.agents/skills/modern-web-guidance/SKILL.md`:
      1. `search`: `npx -y modern-web-guidance@latest search "<consulta de 2-5 palabras en inglés>"`. Usa una consulta por capacidad, sin nombres de framework ni del dominio.
      2. `retrieve`: `npx -y modern-web-guidance@latest retrieve "<id>[,<id>]"`, más la guía de disciplina que aplique (`forms`, `accessibility`, `css`, `performance`, `security`).
      3. **Si la CLI no está permitida o no hay red**, busca y lee directamente las guías locales en `.agents/skills/modern-web-guidance/guides/<área>/*.md` con Grep/Read. No inventes IDs ni citas.

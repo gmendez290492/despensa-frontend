@@ -16,7 +16,7 @@
 |---|---|---|
 | Scaffold (Next 16, Zustand, TanStack Query, Serwist, OpenAPI) | ✅ En `develop` | commit `fc8c7a0` |
 | Arquitectura `.agents/` + subagentes y skills | ✅ En `develop` | PR #1, PR #2 |
-| Integración de **Modern Web Guidance** en reglas y agentes | ✅ En PR #3 | `AGENTS.md §7`, `stitch-ui-builder`, `qa-frontend-auditor`, `implement-stitch-screen` |
+| Integración de **Modern Web Guidance** en reglas y agentes (Claude Code **y Antigravity** sincronizados) | ✅ En PR #3 | `AGENTS.md §7`, `stitch-ui-builder`, `qa-frontend-auditor`, `implement-stitch-screen` |
 | **Auth: login, registro, logout y BFF** | ✅ En PR #3 | Ver §2 |
 | Auditoría MWG del código de auth | ✅ Aplicada | Ver §3 |
 | Documentación **JSDoc** de exports | ✅ 200/200 exports en `src/` | Ver §4 |
