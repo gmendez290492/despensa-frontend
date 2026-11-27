@@ -3,7 +3,13 @@
 import { CloudUpload, TriangleAlert } from "lucide-react";
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
-import { discardOutboxRecord, useOutboxRecords, useOutboxSync } from "@/features/pantry/hooks";
+import {
+  discardOutboxRecord,
+  retryExpiredOutboxRecord,
+  useOutboxRecords,
+  useOutboxSync,
+} from "@/features/pantry/hooks";
+import { isExpiredOutboxConflict } from "@/lib/offline/outbox";
 
 type SyncNow = () => Promise<void>;
 
@@ -42,7 +48,10 @@ export function useOutboxSyncNow(): SyncNow {
  * Aviso de cambios sin sincronizar y conflictos de la outbox (patrón Client
  * Outbox). Muestra "N cambios pendientes" y, por cada conflicto (FastAPI
  * respondió un error de negocio al reintentar, p. ej. `insufficient-stock`),
- * su descripción, el `detail` del servidor y un botón "Descartar".
+ * su descripción, el `detail` del servidor y un botón "Descartar". Los
+ * conflictos por caducidad (`outbox-entry-expired`: más de ~7 días sin
+ * sincronizar) muestran además "Reenviar", que lo envía como operación nueva
+ * con otra `Idempotency-Key` (ver `retryExpiredOutboxRecord`).
  *
  * @remarks
  * - El recuento va en una región `role="status"` (cortés): se anuncia al
@@ -50,7 +59,8 @@ export function useOutboxSyncNow(): SyncNow {
  * - Los conflictos son contenido normal (no `role="alert"`): ya ocurrieron en
  *   segundo plano y el usuario decide cuándo revisarlos; su existencia se
  *   anuncia en la misma región de estado.
- * - "Descartar" nombra el cambio en su nombre accesible ("Descartar Leche · 1 l").
+ * - "Descartar" y "Reenviar" nombran el cambio en su nombre accesible
+ *   ("Descartar Leche · 1 l", "Reenviar Leche · 1 l").
  *
  * @returns El banner o una región de estado vacía si no hay nada pendiente.
  *
@@ -58,7 +68,9 @@ export function useOutboxSyncNow(): SyncNow {
  */
 export function OutboxBanner() {
   const records = useOutboxRecords();
+  const syncNow = useOutboxSyncNow();
   const [discarding, setDiscarding] = useState<number | null>(null);
+  const [retrying, setRetrying] = useState<number | null>(null);
 
   const pending = records.filter((record) => record.status !== "conflict");
   const conflicts = records.filter((record) => record.status === "conflict");
@@ -80,6 +92,15 @@ export function OutboxBanner() {
       await discardOutboxRecord(id);
     } finally {
       setDiscarding(null);
+    }
+  };
+
+  const onRetry = async (id: number) => {
+    setRetrying(id);
+    try {
+      if (await retryExpiredOutboxRecord(id)) await syncNow();
+    } finally {
+      setRetrying(null);
     }
   };
 
@@ -119,16 +140,32 @@ export function OutboxBanner() {
                   </p>
                 </div>
                 {record.id !== undefined ? (
-                  <Button
-                    variant="secondary"
-                    size="md"
-                    loading={discarding === record.id}
-                    loadingText="Descartando…"
-                    onClick={() => void onDiscard(record.id!)}
-                  >
-                    Descartar
-                    <span className="sr-only"> {record.label ?? "cambio"}</span>
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    {isExpiredOutboxConflict(record) ? (
+                      <Button
+                        variant="primary"
+                        size="md"
+                        loading={retrying === record.id}
+                        loadingText="Reenviando…"
+                        disabled={discarding === record.id}
+                        onClick={() => void onRetry(record.id!)}
+                      >
+                        Reenviar
+                        <span className="sr-only"> {record.label ?? "cambio"}</span>
+                      </Button>
+                    ) : null}
+                    <Button
+                      variant="secondary"
+                      size="md"
+                      loading={discarding === record.id}
+                      loadingText="Descartando…"
+                      disabled={retrying === record.id}
+                      onClick={() => void onDiscard(record.id!)}
+                    >
+                      Descartar
+                      <span className="sr-only"> {record.label ?? "cambio"}</span>
+                    </Button>
+                  </div>
                 ) : null}
               </li>
             ))}

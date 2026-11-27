@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { unwrap } from "@/lib/api/server-client";
-import { handleAuthenticated } from "@/lib/bff/authenticated-route";
+import { handleAuthenticated, idempotencyHeaders } from "@/lib/bff/authenticated-route";
 import { createLocationSchema } from "@/lib/pantry/schemas";
 
 /**
@@ -26,7 +26,12 @@ export async function GET(
   );
 }
 
-/** `POST /api/bff/pantries/{pantryId}/locations` `{ name, description? }` → `201 LocationResponse`. */
+/**
+ * `POST /api/bff/pantries/{pantryId}/locations` `{ name, description? }` → `201 LocationResponse`.
+ * Acepta `Idempotency-Key` opcional (validado, `[A-Za-z0-9_-]{8,128}`), lo
+ * reenvía a FastAPI y devuelve `Idempotent-Replayed` si la respuesta es una
+ * repetición.
+ */
 export async function POST(
   request: NextRequest,
   ctx: RouteContext<"/api/bff/pantries/[pantryId]/locations">,
@@ -34,14 +39,15 @@ export async function POST(
   const { pantryId } = await ctx.params;
   return handleAuthenticated(
     request,
-    (client, { correlationId, params, body }) =>
+    (client, { correlationId, params, body, idempotencyKey }) =>
       unwrap(
         client.POST("/api/v1/pantries/{pantry_id}/locations", {
           params: { path: { pantry_id: params.pantryId } },
           body,
+          ...idempotencyHeaders(idempotencyKey),
         }),
         correlationId,
       ),
-    { mutation: true, uuidParams: { pantryId }, body: createLocationSchema, successStatus: 201 },
+    { mutation: true, idempotent: true, uuidParams: { pantryId }, body: createLocationSchema, successStatus: 201 },
   );
 }

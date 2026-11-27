@@ -16,7 +16,9 @@ import {
   drainOutbox,
   enqueueMutation,
   getDexieOutboxStore,
+  isExpiredOutboxConflict,
   isTransientError,
+  renewedOutboxChanges,
   type OutboxSender,
 } from "@/lib/offline/outbox";
 import type { ConsumeInput, ConsumePayload, CreatePantryInput, JoinPantryInput } from "@/lib/pantry/schemas";
@@ -797,4 +799,40 @@ export async function countPendingOutbox(userId?: string): Promise<number> {
 export async function discardOutboxRecord(id: number): Promise<void> {
   const { offlineDb } = await import("@/lib/db/offline-db");
   await offlineDb.outboxQueue.delete(id);
+}
+
+/**
+ * Reenvía, por decisión explícita del usuario, un cambio que caducó en la
+ * outbox (conflicto `outbox-entry-expired`, ver `OUTBOX_MAX_REPLAY_AGE_MS`).
+ *
+ * Es una **operación nueva consciente**, no un reintento: la clave original
+ * pudo caducar en FastAPI (168 h) y el servidor ya no garantiza deduplicarla,
+ * así que se genera una `Idempotency-Key` nueva (`clientMutationId`), con
+ * `createdAt` actual y estado `pending`. Si el envío original llegó a aplicarse
+ * y solo se perdió la respuesta, el efecto puede repetirse: por eso solo se
+ * hace cuando el usuario lo confirma. Se conservan el `id` (posición FIFO), el
+ * destino y el cuerpo. Las filas en otro estado o con otro conflicto no se
+ * tocan.
+ *
+ * Tras llamarla, fuerza un drenado (`useOutboxSyncNow()`).
+ *
+ * @param id - `id` de la fila en conflicto.
+ * @param now - Reloj inyectable (tests).
+ * @returns `true` si se renovó; `false` si la fila ya no existe o no es un
+ *   conflicto por caducidad.
+ *
+ * @example
+ * ```ts
+ * if (await retryExpiredOutboxRecord(record.id!)) await syncNow();
+ * ```
+ */
+export async function retryExpiredOutboxRecord(id: number, now: () => Date = () => new Date()): Promise<boolean> {
+  const { offlineDb } = await import("@/lib/db/offline-db");
+  const table = offlineDb.outboxQueue;
+  return offlineDb.transaction("rw", table, async () => {
+    const row = await table.get(id);
+    if (!row || !isExpiredOutboxConflict(row)) return false;
+    await table.update(id, renewedOutboxChanges(crypto.randomUUID(), now()));
+    return true;
+  });
 }

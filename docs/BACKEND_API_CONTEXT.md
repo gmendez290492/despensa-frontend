@@ -26,8 +26,8 @@ Referencia canónica para desarrolladores y subagentes de `despensa-frontend`. E
 ### 2.1 Identidad y Autenticación (`users`)
 - `POST /api/v1/auth/register` *(Pública, rate-limited)* → Body: `{ email, password (8-128), full_name (2-120), timezone="UTC", alert_days_before=3 (1-30) }` → `201 UserResponse`.
 - `POST /api/v1/auth/login` *(Pública, rate-limited)* → Body: `{ email, password }` → `200 TokenResponse` (`access_token`, `refresh_token`, `token_type`, `expires_in`).
-- `POST /api/v1/auth/refresh` *(Pública)* → Body: `{ refresh_token }` → `200 TokenResponse`.
-- `POST /api/v1/auth/logout` *(Pública)* → Body: `{ refresh_token }` → `204 No Content`.
+- `POST /api/v1/auth/refresh` *(Pública, rate-limited)* → Body: `{ refresh_token }` → `200 TokenResponse`. Ante `429`, `bffFetch` espera `Retry-After` (tope `RATE_LIMIT_RETRY_CAP_SECONDS` = 5 s, `src/lib/api/rate-limit.ts`) y reintenta una vez dentro de la promesa compartida; si persiste lanza el `429` (con `retry_after`), **no** el `401`. El BFF nunca borra cookies por un `429`; en la navegación (`GET /api/bff/auth/refresh`) redirige 303 a `/offline` con `Retry-After`.
+- `POST /api/v1/auth/logout` *(Pública, rate-limited)* → Body: `{ refresh_token }` → `204 No Content`. Ante `429`, el BFF reintenta una vez tras `Retry-After` (mismo tope) y, si persiste, solo registra `console.warn` con el `correlation_id`; al cliente le responde `204` y borra las cookies igualmente.
 - `GET /api/v1/users/me` *(Bearer)* → `200 UserResponse` (`id`, `email`, `full_name`, `timezone`, `alert_days_before`, `created_at`).
 
 ### 2.2 Hogares, Ubicaciones, Catálogo y Lotes FEFO (`pantry`)
@@ -79,7 +79,7 @@ Estructura estándar devuelta por FastAPI en errores de dominio:
 | `invalid-credentials` | `401` | Email o contraseña incorrectos |
 | `invalid-token` | `401` | Token expirado, inválido o revocado |
 | `email-already-exists` | `409` | Correo ya registrado |
-| `rate-limit-exceeded` | `429` | Demasiados intentos en `/auth/*` |
+| `rate-limit-exceeded` | `429` | Demasiados intentos en `/auth/*` (incluye `Retry-After`). `refresh` y `logout` tienen su propio límite: 30/min por IP y ruta (`REFRESH_RATE_LIMIT_MAX_ATTEMPTS` / `REFRESH_RATE_LIMIT_WINDOW_SECONDS`) |
 | `pantry-access-denied` | `403` | Usuario no pertenece a la despensa (escudo IDOR) |
 | `pantry-not-found` / `location-not-found` / `product-not-found` | `404` | Recurso inexistente |
 | `invalid-invite-code` | `404` | Código de invitación inválido |

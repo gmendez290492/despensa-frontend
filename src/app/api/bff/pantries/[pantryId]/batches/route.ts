@@ -29,10 +29,9 @@ export async function GET(
  * `POST /api/bff/pantries/{pantryId}/batches` → `201 FoodBatchResponse`.
  * Acepta `Idempotency-Key` (validado) y lo reenvía a FastAPI.
  *
- * @remarks La deduplicación por `(user_id, Idempotency-Key)` está en la rama
- * `feature/pantry-idempotency-issue-11` de FastAPI: hasta que se fusione
- * despensa-backend#11, un reintento tras una respuesta perdida puede crear un
- * lote duplicado (ver `docs/FRONTEND_CONTEXT.md`, hallazgos abiertos).
+ * @remarks FastAPI deduplica por `(user_id, Idempotency-Key)` durante 168 h
+ * (despensa-backend#14): un reintento tras una respuesta perdida no crea un
+ * lote duplicado. El BFF devuelve `Idempotent-Replayed` cuando FastAPI la envía.
  */
 export async function POST(
   request: NextRequest,

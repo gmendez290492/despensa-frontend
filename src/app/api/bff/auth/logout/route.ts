@@ -12,7 +12,9 @@ import {
 /**
  * `POST /api/bff/auth/logout` -> revoca la sesión en FastAPI (refresh y access
  * de esa sesión dejan de valer al instante) y limpia cookies. Siempre `204`
- * (idempotente), aunque el backend falle. Requiere `Content-Type:
+ * (idempotente), aunque el backend falle: ante `429` reintenta una vez tras
+ * `Retry-After` (con tope) y, si persiste, solo registra un aviso con el
+ * `correlation_id`; las cookies se borran igualmente. Requiere `Content-Type:
  * application/json` aunque no lleve body (defensa CSRF).
  */
 export async function POST(request: NextRequest) {
@@ -23,7 +25,7 @@ export async function POST(request: NextRequest) {
     return handleError(error, correlationId);
   }
 
-  await revokePreviousSession(correlationId);
+  await revokePreviousSession(correlationId, undefined, { retryOnRateLimit: true });
   await clearSessionCookies();
   return emptyResponse(correlationId, 204);
 }
@@ -56,7 +58,7 @@ export async function GET(request: NextRequest) {
   const fetchSite = request.headers.get("sec-fetch-site")?.toLowerCase();
   if (!fetchSite || !SAFE_NAVIGATION_SITES.has(fetchSite)) return response;
 
-  await revokePreviousSession(correlationId);
+  await revokePreviousSession(correlationId, undefined, { retryOnRateLimit: true });
   await clearSessionCookies();
   return response;
 }

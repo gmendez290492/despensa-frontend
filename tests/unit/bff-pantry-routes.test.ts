@@ -425,6 +425,167 @@ describe("POST /api/bff/pantries/{id}/consume", () => {
   });
 });
 
+describe("Idempotent-Replayed (FastAPI → BFF → navegador)", () => {
+  const consumeReq = (key = "mut_replay_000001") =>
+    req(`/api/bff/pantries/${PANTRY_ID}/consume`, {
+      method: "POST",
+      headers: { ...sameOriginJson, "Idempotency-Key": key },
+      body: consumeBody,
+    });
+
+  it("consume: reenvía Idempotent-Replayed: true de una respuesta 200 repetida", async () => {
+    routes[`POST /api/v1/pantries/${PANTRY_ID}/consume`] = () =>
+      json(consumeResult, 200, { "Idempotent-Replayed": "true" });
+    const response = await consume(consumeReq(), ctx(PANTRY_ID));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Idempotent-Replayed")).toBe("true");
+    expect(await response.json()).toEqual(consumeResult);
+  });
+
+  it("consume: un 4xx repetido también lleva Idempotent-Replayed (resultado definitivo)", async () => {
+    routes[`POST /api/v1/pantries/${PANTRY_ID}/consume`] = () => {
+      const response = problem("insufficient-stock", 400);
+      response.headers.set("Idempotent-Replayed", "true");
+      return response;
+    };
+    const response = await consume(consumeReq(), ctx(PANTRY_ID));
+    expect(response.status).toBe(400);
+    expect(response.headers.get("Content-Type")).toContain("application/problem+json");
+    expect(response.headers.get("Idempotent-Replayed")).toBe("true");
+  });
+
+  it("consume: sin la cabecera en FastAPI no se añade", async () => {
+    const response = await consume(consumeReq(), ctx(PANTRY_ID));
+    expect(response.headers.has("Idempotent-Replayed")).toBe(false);
+  });
+
+  it("consume: un valor no booleano de FastAPI no se reenvía", async () => {
+    routes[`POST /api/v1/pantries/${PANTRY_ID}/consume`] = () =>
+      json(consumeResult, 200, { "Idempotent-Replayed": "yes; injected" });
+    const response = await consume(consumeReq(), ctx(PANTRY_ID));
+    expect(response.headers.has("Idempotent-Replayed")).toBe(false);
+  });
+
+  it("consume: tras 401 + refresh manda la cabecera de la última respuesta", async () => {
+    let attempts = 0;
+    routes[`POST /api/v1/pantries/${PANTRY_ID}/consume`] = () => {
+      attempts += 1;
+      return attempts === 1
+        ? problem("invalid-token", 401)
+        : json(consumeResult, 200, { "Idempotent-Replayed": "TRUE" });
+    };
+    const response = await consume(consumeReq(), ctx(PANTRY_ID));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Idempotent-Replayed")).toBe("true");
+  });
+
+  it("batches: reenvía Idempotent-Replayed en el 201 repetido", async () => {
+    const batch = { id: LOCATION_ID };
+    routes[`POST /api/v1/pantries/${PANTRY_ID}/batches`] = () =>
+      json(batch, 201, { "Idempotent-Replayed": "true" });
+    const response = await batchesRoute.POST(
+      req(`/api/bff/pantries/${PANTRY_ID}/batches`, {
+        method: "POST",
+        headers: { ...sameOriginJson, "Idempotency-Key": "mut_batch_000001" },
+        body: {
+          product_id: PRODUCT_ID,
+          location_id: LOCATION_ID,
+          unit_code: "l",
+          quantity: "1",
+          expiration_date: "2026-12-31",
+        },
+      }),
+      ctx(PANTRY_ID),
+    );
+    expect(response.status).toBe(201);
+    expect(response.headers.get("Idempotent-Replayed")).toBe("true");
+    const [call] = backendCalls("POST", `/api/v1/pantries/${PANTRY_ID}/batches`);
+    expect(call?.headers.get("Idempotency-Key")).toBe("mut_batch_000001");
+  });
+
+  it("una ruta no idempotente (GET) nunca reenvía la cabecera", async () => {
+    routes["GET /api/v1/pantries"] = () => json([pantry], 200, { "Idempotent-Replayed": "true" });
+    const response = await pantriesRoute.GET(req("/api/bff/pantries"));
+    expect(response.headers.has("Idempotent-Replayed")).toBe(false);
+  });
+});
+
+describe("Idempotency-Key opcional en POST /pantries, /pantries/join, /locations y /products", () => {
+  const KEY = "mut_create_00000001";
+  const cases = [
+    {
+      name: "POST /api/bff/pantries",
+      backend: "/api/v1/pantries",
+      status: 201,
+      send: (headers: Record<string, string>) =>
+        pantriesRoute.POST(req("/api/bff/pantries", { method: "POST", headers, body: { name: "Casa" } })),
+    },
+    {
+      name: "POST /api/bff/pantries/join",
+      backend: "/api/v1/pantries/join",
+      status: 200,
+      send: (headers: Record<string, string>) =>
+        joinPantry(req("/api/bff/pantries/join", { method: "POST", headers, body: { invite_code: "DESP-ABCD1234" } })),
+    },
+    {
+      name: "POST /api/bff/pantries/{id}/locations",
+      backend: `/api/v1/pantries/${PANTRY_ID}/locations`,
+      status: 201,
+      send: (headers: Record<string, string>) =>
+        locationsRoute.POST(
+          req(`/api/bff/pantries/${PANTRY_ID}/locations`, { method: "POST", headers, body: { name: "Alacena" } }),
+          ctx(PANTRY_ID),
+        ),
+    },
+    {
+      name: "POST /api/bff/products",
+      backend: "/api/v1/products",
+      status: 201,
+      send: (headers: Record<string, string>) =>
+        productsRoute.POST(
+          req("/api/bff/products", {
+            method: "POST",
+            headers,
+            body: { category_id: LOCATION_ID, name: "Leche", base_unit_code: "l" },
+          }),
+        ),
+    },
+  ];
+
+  beforeEach(() => {
+    routes[`POST /api/v1/pantries/${PANTRY_ID}/locations`] = () => json({ id: LOCATION_ID, name: "Alacena" }, 201);
+    routes["POST /api/v1/products"] = () => json({ id: PRODUCT_ID, name: "Leche" }, 201);
+  });
+
+  it.each(cases)("$name reenvía Idempotency-Key y devuelve Idempotent-Replayed", async ({ backend, status, send }) => {
+    const original = routes[`POST ${backend}`]!;
+    routes[`POST ${backend}`] = async (seen) => {
+      const response = await original(seen);
+      response.headers.set("Idempotent-Replayed", "true");
+      return response;
+    };
+    const response = await send({ ...sameOriginJson, "Idempotency-Key": KEY });
+    expect(response.status).toBe(status);
+    expect(response.headers.get("Idempotent-Replayed")).toBe("true");
+    const [call] = backendCalls("POST", backend);
+    expect(call?.headers.get("Idempotency-Key")).toBe(KEY);
+  });
+
+  it.each(cases)("$name sin Idempotency-Key no envía la cabecera (sigue siendo opcional)", async ({ backend, status, send }) => {
+    const response = await send(sameOriginJson);
+    expect(response.status).toBe(status);
+    const [call] = backendCalls("POST", backend);
+    expect(call?.headers.has("Idempotency-Key")).toBe(false);
+  });
+
+  it.each(cases)("$name con Idempotency-Key inválido → 400 sin llamar a FastAPI", async ({ send }) => {
+    const response = await send({ ...sameOriginJson, "Idempotency-Key": "bad key" });
+    expect(response.status).toBe(400);
+    expect((await response.json()).errors?.[0]?.loc).toEqual(["header", "Idempotency-Key"]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
 describe("GET /api/bff/notifications", () => {
   it("limit=100000 se acota a 100 y el resto de parámetros se conserva", async () => {
     await notifications(

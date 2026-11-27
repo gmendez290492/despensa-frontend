@@ -47,6 +47,8 @@ export async function POST(request: NextRequest) {
  *   sitio no puede forzar rotaciones de tokens).
  * - Refresh rechazado (4xx) -> limpia cookies y 303 a `/login?next=`.
  * - Backend caído (5xx / red) -> 303 a `/offline`, conservando la sesión.
+ * - Rate limit del refresh (429, despensa-frontend#6) -> 303 a `/offline` con
+ *   `Retry-After`, conservando la sesión.
  */
 export async function GET(request: NextRequest) {
   const correlationId = getCorrelationId(request);
@@ -77,8 +79,17 @@ export async function GET(request: NextRequest) {
     if (error instanceof ProblemDetailError) {
       if (error.status === 401) return toLogin();
       if (error.status >= 500) return redirect(OFFLINE_PATH);
+      if (error.status === 429) {
+        // Es una navegación: en vez de mostrar problem+json en crudo, se lleva
+        // al fallback `/offline` (con "Reintentar") conservando la sesión.
+        const response = redirect(OFFLINE_PATH);
+        if (error.retry_after !== undefined) {
+          response.headers.set("Retry-After", String(error.retry_after));
+        }
+        return response;
+      }
     }
-    // 429 u otros: problem+json sin destruir la sesión.
+    // Otros: problem+json sin destruir la sesión.
     return handleError(error, correlationId);
   }
 }

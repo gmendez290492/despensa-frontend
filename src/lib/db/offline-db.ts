@@ -10,10 +10,11 @@ export type OutboxMutationStatus = "pending" | "syncing" | "conflict" | "failed"
 /**
  * Fila de la tabla `outboxQueue` (patrón Client Outbox).
  *
- * @remarks El `clientMutationId` viaja como `Idempotency-Key`. La rama
- * `feature/pantry-idempotency-issue-11` de FastAPI ya deduplica por
- * `(user_id, key)`, pero hasta que se fusione despensa-backend#11 un reintento
- * tras perder la respuesta puede duplicar el efecto en el backend desplegado.
+ * @remarks El `clientMutationId` viaja como `Idempotency-Key`; FastAPI
+ * deduplica por `(user_id, key)` durante 168 h (despensa-backend#14). Una fila
+ * más antigua que `OUTBOX_MAX_REPLAY_AGE_MS` no se reenvía sola: pasa a
+ * `conflict` (`outbox-entry-expired`) y, si el usuario confirma, se renueva
+ * con otra clave.
  *
  * `payload` se guarda en claro en IndexedDB. Los consumos encolados **sin
  * haber llegado a enviarse** no guardan `notes` (texto libre); solo se
