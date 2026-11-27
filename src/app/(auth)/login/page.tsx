@@ -22,7 +22,7 @@ export default function LoginPage() {
 
       <main className="flex flex-1 flex-col justify-center py-6">
         <div className="mb-6">
-          <h1 className="font-display text-[32px] leading-[1.18] font-normal tracking-tight text-foreground">
+          <h1 className="font-display text-[2rem] leading-[1.18] font-normal tracking-tight text-foreground">
             Bienvenido de vuelta a tu despensa
           </h1>
           <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">
@@ -36,7 +36,7 @@ export default function LoginPage() {
       </main>
 
       <footer className="border-t border-border-sand/70 pt-4 pb-6 text-center">
-        <p className="inline-flex items-center justify-center gap-1.5 text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+        <p className="inline-flex items-center justify-center gap-1.5 text-[0.625rem] font-semibold tracking-wider text-muted-foreground uppercase">
           <ShieldCheck aria-hidden="true" className="size-3.5 shrink-0 text-primary-container" strokeWidth={1.8} />
           Sesión protegida · Tus datos no se guardan en el navegador
         </p>

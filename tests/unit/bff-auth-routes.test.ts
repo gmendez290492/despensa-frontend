@@ -519,15 +519,31 @@ describe("429 en refresh/logout (despensa-frontend#6)", () => {
     expect(jar.values.get(REFRESH)).toBe("rt-429-post");
   });
 
-  it("GET refresh con 429: 303 a /offline (con Retry-After) sin borrar la sesión", async () => {
+  it("GET refresh con 429: 303 a /offline?motivo=limite (con Retry-After) sin borrar la sesión", async () => {
     jar.reset({ [REFRESH]: "rt-429-get" });
     routes["POST /api/v1/auth/refresh"] = rateLimited("12");
     const response = await refreshGet(req("/api/bff/auth/refresh?next=%2F", { method: "GET" }));
     expect(response.status).toBe(303);
-    expect(new URL(response.headers.get("location")!).pathname).toBe("/offline");
+    const location = new URL(response.headers.get("location")!);
+    expect(location.pathname).toBe("/offline");
+    expect(location.searchParams.get("motivo")).toBe("limite");
+    // `next` por defecto ("/") no se arrastra.
+    expect(location.searchParams.has("next")).toBe(false);
     expect(response.headers.get("retry-after")).toBe("12");
     expect(jar.sets).toHaveLength(0);
     expect(jar.values.get(REFRESH)).toBe("rt-429-get");
+  });
+
+  it("GET refresh con 429 conserva un `next` saneado para que Reintentar vuelva a la ruta", async () => {
+    jar.reset({ [REFRESH]: "rt-429-next" });
+    routes["POST /api/v1/auth/refresh"] = rateLimited("5");
+    const response = await refreshGet(
+      req("/api/bff/auth/refresh?next=%2Finventario%3Fsemaforo%3Dcritico", { method: "GET" }),
+    );
+    const location = new URL(response.headers.get("location")!);
+    expect(location.pathname).toBe("/offline");
+    expect(location.searchParams.get("motivo")).toBe("limite");
+    expect(location.searchParams.get("next")).toBe("/inventario?semaforo=critico");
   });
 
   it("logout: 429 -> espera Retry-After, reintenta y responde 204 con cookies borradas", async () => {

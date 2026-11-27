@@ -24,3 +24,14 @@ Aplica esta receta para toda operación crítica de escritura en despensa (alta 
 2. Si una mutación previa creó un recurso maestro (ej. `POST /api/v1/products` con ID temporal), sustituye ese ID temporal por el UUID real en las mutaciones dependientes antes de enviarlas.
 3. Si FastAPI responde con un error de dominio **RFC 7807** (ej. `400 insufficient-stock` o `403 pantry-access-denied`):
    - **No descartes la fila en silencio.** Actualiza el registro en `outboxQueue` a `status: "conflict"` adjuntando el objeto `ProblemDetailError` en `lastError` e invalida el caché de TanStack Query para reflejar la verdad del servidor y notificar al usuario.
+
+## Implementación de referencia (Etapa 2)
+
+Copia el patrón de `useConsumeMutation` (`src/features/pantry/hooks.ts`) y `src/lib/offline/outbox.ts` en vez de reinventarlo:
+
+- la fila lleva `userId`, `kind` (allowlist en `OUTBOX_ENDPOINT_RULES`), `label`, `attempts` y `updatedAt`;
+- el `clientMutationId` es la `Idempotency-Key` y se mantiene estable entre reintentos;
+- se encola ante `shouldEnqueueAfterSend(error)` (red, 5xx, 408, 429, 409 en curso) con **el mismo cuerpo** ya enviado;
+- conflicto ante cualquier otro 4xx; las filas con más de 6 d 20 h pasan a `outbox-entry-expired`.
+
+Añade un `kind` nuevo a `OUTBOX_ENDPOINT_RULES` con su regex exacta, y tests en `tests/unit/outbox.test.ts` y `pantry-hooks.test.tsx` (`fake-indexeddb`).

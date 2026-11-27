@@ -22,10 +22,10 @@ export default function ForgotPasswordPage() {
       <AuthBackHeader href="/login" backLabel="Volver a iniciar sesión" />
       <main className="flex-1 pt-7 pb-8">
         <section className="mb-6">
-          <p className="mb-1.5 text-[11px] font-bold tracking-[0.16em] text-muted-foreground uppercase">
+          <p className="mb-1.5 text-[0.6875rem] font-bold tracking-[0.16em] text-muted-foreground uppercase">
             Recuperar acceso
           </p>
-          <h1 className="mb-2 font-display text-[28px] leading-[1.2] font-normal tracking-tight text-foreground">
+          <h1 className="mb-2 font-display text-[1.75rem] leading-[1.2] font-normal tracking-tight text-foreground">
             ¿Olvidaste tu contraseña?
           </h1>
           <p className="text-sm leading-relaxed text-muted-foreground">

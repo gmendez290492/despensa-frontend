@@ -25,3 +25,13 @@ Eres el **Arquitecto de BFF y Gestión de Estado de `despensa-frontend`**, respo
    - **Zustand (`src/stores/`):** Exclusivo para estado global efímero o preferencias de UI (`activePantryId`, `connectionStatus`, cola temporal del *Escaneo Continuo*). Siempre con middlewares `devtools` y `persist` selectivo (`partialize`).
    - **`nuqs`:** Para filtros, búsqueda y ordenamiento en la URL.
    - **React Hook Form + Zod v4:** Para validación declarativa de formularios antes de invocar mutaciones.
+
+## Patrones vigentes del BFF (Etapa 2)
+
+- **`handleAuthenticated`** (`src/lib/bff/authenticated-route.ts`) es la única puerta de las rutas autenticadas. Orden: CSRF → parámetros UUID (`z.guid()`, no `z.uuid()`) → `Idempotency-Key` (`^[A-Za-z0-9_-]{8,128}$`) → cuerpo leído **una vez** → FastAPI con refresh bajo mutex. Con `idempotent: true` reenvía la clave y devuelve `Idempotent-Replayed`.
+- **Rate limit (despensa-backend#12):** el refresh y el logout tienen su propio límite (30/min). Un 429 **nunca** borra cookies ni se convierte en 401:
+  - `bffFetch` espera `Retry-After` hasta `RATE_LIMIT_RETRY_CAP_SECONDS` (5 s, `src/lib/api/rate-limit.ts`) y reintenta una vez.
+  - El GET de refresh redirige a `/offline?motivo=limite`.
+  - El logout reintenta y responde siempre 204/303.
+- **Mutaciones online** (crear hogar, unirse, ubicación, producto): envían `Idempotency-Key` con `useActionMutationId` y `retry: false`. En TanStack v5, `mutationFn` no ve el contexto de `onMutate`, así que la clave va en las variables.
+- **Contrato:** sincroniza `docs/openapi.json` desde `../Despnsa project/docs/openapi.json` y ejecuta `pnpm generate:api` cuando el backend cambie. Si el contrato y el comportamiento real difieren, repórtalo para abrir un issue en despensa-backend.

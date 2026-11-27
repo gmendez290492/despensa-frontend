@@ -120,11 +120,34 @@ describe("LoginForm", () => {
     expect(refresh).toHaveBeenCalled();
   });
 
-  it("deshabilita el envío sin conexión", () => {
+  it("sin conexión marca el envío aria-disabled (enfocable, con pista) y no envía", async () => {
     render(<LoginForm />);
     act(() => useUiStore.setState({ connectionStatus: "offline" }));
 
-    expect(screen.getByRole("button", { name: /iniciar sesión/i })).toBeDisabled();
-    expect(screen.getByText("Necesitas conexión para iniciar sesión.")).toBeInTheDocument();
+    const submit = screen.getByRole("button", { name: /iniciar sesión/i });
+    expect(submit).toHaveAttribute("aria-disabled", "true");
+    expect(submit).toBeEnabled();
+    expect(submit).toHaveAccessibleDescription("Necesitas conexión para iniciar sesión.");
+    submit.focus();
+    expect(submit).toHaveFocus();
+
+    fillAndSubmit("ana@despensa-qa.com", "secreta123");
+    // Ni valida ni envía: sin errores de campo y sin mutación.
+    await waitFor(() => expect(mutate).not.toHaveBeenCalled());
+    expect(screen.getByLabelText(/correo electrónico/i)).toHaveAttribute("aria-invalid", "false");
+
+    act(() => useUiStore.setState({ connectionStatus: "online" }));
+    expect(submit).not.toHaveAttribute("aria-disabled");
+    expect(submit).not.toHaveAccessibleDescription();
+    fireEvent.click(submit);
+    await waitFor(() => expect(mutate).toHaveBeenCalledTimes(1));
+  });
+
+  it("sin conexión tampoco valida: enviar vacío no muestra errores", async () => {
+    render(<LoginForm />);
+    act(() => useUiStore.setState({ connectionStatus: "offline" }));
+    fireEvent.submit(screen.getByRole("form", { name: "Iniciar sesión" }));
+    await waitFor(() => expect(mutate).not.toHaveBeenCalled());
+    expect(screen.getByLabelText(/correo electrónico/i)).toHaveAttribute("aria-invalid", "false");
   });
 });

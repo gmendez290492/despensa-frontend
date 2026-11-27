@@ -6,7 +6,42 @@
 > backend en [`BACKEND_API_CONTEXT.md`](./BACKEND_API_CONTEXT.md).
 > Actualízalo al cerrar cada bloque de trabajo.
 
-**Última actualización:** 2026-11-27 · **Rama activa:** `feature/idempotency-ttl-refresh-429` (desde `develop` `65bb3b6`, sin commit todavía) · Etapa 2 fusionada en `develop` (PR #7)
+**Última actualización:** 2026-11-27 · **Rama activa:** `feature/pantry-followups` (desde `develop` `8cfac90`) · En `develop`: Etapa 2 (PR #7) e issues #5/#6 (PR #8)
+
+---
+
+## 0. Traspaso (para retomar en Claude Code o Antigravity)
+
+**Dónde quedó el trabajo:**
+- `develop` tiene la Etapa 2 completa y los issues frontend #5 y #6 cerrados.
+- La rama `feature/pantry-followups` (PR hacia `develop`, ver §6) añade:
+  - `Idempotency-Key` en las mutaciones online (crear hogar, unirse, ubicación, producto) y la documentación JSDoc completa de `features/pantry/{api,hooks}.ts`;
+  - `/offline?motivo=limite` ante un 429 del refresh;
+  - los hallazgos MWG 3, 4 y 5 (rem, contraste del slider, `aria-disabled` en auth);
+  - la skill `backend-integration-suites` y las lecciones de la Etapa 2 en los agentes.
+
+**Cómo retomar:**
+1. Lee `AGENTS.md` y este documento (§1 estado, §2b Etapa 2, §6 próximos pasos).
+2. `gh issue list` en `gmendez290492/despensa-frontend` y en `gmendez290492/despensa-backend`.
+3. `git checkout develop && git pull`; si el PR de `feature/pantry-followups` sigue abierto, revísalo y espera la confirmación del usuario para el merge.
+4. Para validar contra el backend, usa la skill `backend-integration-suites` (Antigravity: `.agents/skills/`; Claude Code: `.claude/skills/`).
+
+**Issues abiertos relevantes:**
+- Backend:
+  - despensa-backend#13: validador de `purchase_date`, `ilike` sin escapar, búsqueda por código de barras, paginación. Bloquea el escáner.
+  - despensa-backend#16: la API satura a unos 60–100 req/s, con p95 de 1–2,7 s en lecturas. Diagnosticado como cuello de botella del backend: FastAPI directo es más lento que a través del BFF.
+  - despensa-backend#17: el OpenAPI de `/pantries/join` no documenta `409 already-pantry-member`.
+- Frontend: ninguno abierto al cierre.
+
+**Pendiente de esta sesión:** las pruebas manuales en Chrome (extensión Claude in Chrome) no se pudieron ejecutar porque las herramientas del navegador no estaban activas. Se retoma con `claude --chrome --resume` (Claude Code) o con el navegador de Antigravity. Recorrido sugerido:
+1. Registro y onboarding: crear hogar e invitar.
+2. Panel e inventario: filtros y semáforo.
+3. "Registrar consumo".
+4. Sin conexión (DevTools → Network → Offline): consumir, ver "N cambio(s) pendiente(s)" y reconectar.
+5. Conflicto `insufficient-stock` con dos cuentas.
+6. "Cerrar sesión" con cambios pendientes (diálogo).
+7. `/offline?motivo=limite`.
+8. En Application: cookies `HttpOnly` y ningún token en storage ni en IndexedDB.
 
 ---
 
@@ -25,16 +60,18 @@
 | **Etapa 2 · pantry** (Home Dashboard, Inventario, consumo FEFO, outbox offline) | 🟡 Implementada en `feature/etapa-2-pantry`, sin commit/PR | Ver §2b |
 | Pruebas de **seguridad** (Playwright) y **estrés** (k6) | ✅ Escritas y en verde contra FastAPI local | Ver §2b "Seguridad y estrés" |
 
-### Puertas de calidad (última ejecución: 2026-11-27, issues #5 y #6)
+### Puertas de calidad (última ejecución: 2026-11-27, `feature/pantry-followups`)
 
 | Puerta | Resultado |
 |---|---|
 | `pnpm lint` | ✅ 0 errores |
 | `pnpm typecheck` | ✅ App + SW |
-| `pnpm test` | ✅ 536/536 (32 archivos) |
-| `pnpm build` | ✅ `public/sw.js` precachea 34 URLs (1.19 MB) |
+| `pnpm test` | ✅ 556/556 (34 archivos) |
+| `pnpm build` | ✅ `/offline` estática; `public/sw.js` precachea 35 URLs (1.18 MB) |
 | Playwright E2E (`pnpm exec playwright test`, incluye `security/`) | ✅ 46/46 (Desktop + Mobile Chrome) con FastAPI local y rate limits relajados |
-| k6 (`pnpm test:stress`): smoke, consume_contention, refresh_storm, idempotent_replay | ✅ 4/4 (load/spike/soak escritos, no ejecutados) |
+| k6 (`pnpm test:stress`): smoke, consume_contention, refresh_storm, idempotent_replay | ✅ 4/4 |
+| k6 `load` (50 VUs, 6 min) / `spike` (200 VUs) | ⚠️ 0 errores en 18 273 / 7 877 peticiones, pero se superan los umbrales de latencia (p95 `batches` 3,8 s / 9,7 s). El cuello de botella es el backend (despensa-backend#16) |
+| Pruebas manuales en Chrome | ⏳ Pendientes (ver §0) |
 
 ---
 
@@ -99,7 +136,7 @@ Pantallas Stitch: Home Dashboard `7888102e6f53468e9258286b534611ae` → `src/app
   - TTL: `drainOutbox` no reenvía filas con más de `OUTBOX_MAX_REPLAY_AGE_MS` (6 d 20 h; FastAPI olvida las claves a las 168 h). Las pasa a `conflict` con `outbox-entry-expired`. El banner ofrece "Reenviar" (`retryExpiredOutboxRecord`, que usa una **clave nueva**: es una operación nueva y consciente).
   - Errores de clave: `400 invalid-idempotency-key` y `422 idempotency-key-reused` nunca se reintentan y se registran con `console.warn` (`correlation_id`).
   - BFF: reenvía `Idempotent-Replayed` (middleware `onResponse` en `handleAuthenticated` con `idempotent: true`) y acepta `Idempotency-Key` también en `pantries`, `join`, `locations` y `products`.
-  - Pendiente: los hooks de crear hogar/unirse/ubicación/producto siguen siendo solo online y sin clave.
+  - Las mutaciones online (crear hogar, unirse, ubicación, producto) envían `Idempotency-Key` con `useActionMutationId` y `retry: false` (`feature/pantry-followups`). Siguen siendo solo online: no se encolan en la outbox.
 - **Issue #6 (rate limit de refresh/logout):**
   - `bffFetch` ante un refresh con 429 espera `Retry-After` (tope `RATE_LIMIT_RETRY_CAP_SECONDS` = 5 s, `src/lib/api/rate-limit.ts`) y reintenta una vez. Si persiste lanza el 429, no el 401. Solo un 401/403 real del refresh significa sesión caducada.
   - `GET /api/bff/auth/refresh` con 429 → 303 a `/offline` con `Retry-After`, conservando la sesión.
@@ -135,9 +172,10 @@ Ya cumplía antes: `<form>` + `<label for>`, `type="email"`, toggle "mostrar con
 
 1. **Doble campo de contraseña** (`confirm_password`): la guía de registro desaconseja pedirla dos veces. Se mantiene porque lo pide el diseño Stitch. *Decisión de producto pendiente.*
 2. ~~"¿Olvidaste tu contraseña?"~~ ✅ Resuelto con el issue #4; pantallas diseñadas en Stitch.
-3. **Tamaños en `px`**: migrados a `rem` en la Etapa 2; quedan en auth y en `Button` `lg` (`text-[15px]`, compartido con auth).
-4. **Contraste del track del slider** (`--surface-high` vs fondo): verificar ≥ 3:1.
-5. Botón de envío `disabled` cuando no hay conexión: su `aria-describedby` no se lee porque un botón deshabilitado no recibe foco. El texto visible lo compensa; valorar `aria-disabled`.
+3. ~~**Tamaños en `px`**~~ ✅ Resuelto (`feature/pantry-followups`): los `text-[Npx]` de auth, `/offline`, `error.tsx`, `Button` `lg`, `Alert`, `TextField` y `BrandMark` pasan a `rem` (`respect-os-text-scale`). Radios, bordes y `max-w-[430px]` siguen en px.
+4. ~~**Contraste del track del slider**~~ ✅ Resuelto: `--surface-high` daba 1.16:1 sobre `--background` (1.23:1 sobre blanco); el tramo sin rellenar usa ahora `--input-border`, con 3.77:1 y 3.97:1 (WCAG 1.4.11; `slider`, `color`). El relleno (`--primary-container`) frente al tramo vacío da 2.54:1; el valor se comunica también con la posición del thumb y el chip de texto.
+5. ~~Botón de envío `disabled` sin conexión~~ ✅ Resuelto: login, registro, recuperación y reset usan `aria-disabled="true"` (sigue enfocable y anuncia la pista `aria-describedby`); `blockSubmitWhileOffline` (`src/features/auth/offline-submit.ts`) corta el envío antes de validar, incluido el envío implícito con Enter. E2E `offline.spec.ts` comprueba `aria-disabled`.
+6. `/offline` tras un `429` del refresh GET: el BFF redirige a `/offline?motivo=limite&next=…`; la hoja cliente `OfflineMessage` (en `<Suspense>`, la página sigue estática y precacheada) muestra "Demasiados intentos", y "Reintentar" navega a `next` en lugar de recargar `/offline`. Pendiente menor: el `<title>` y el pie ("Modo sin conexión") siguen siendo los genéricos.
 
 ---
 
@@ -161,10 +199,10 @@ Ya cumplía antes: `<form>` + `<label for>`, `type="email"`, toggle "mostrar con
 
 ## 6. Próximos pasos
 
-1. PR `feature/idempotency-ttl-refresh-429` → `develop` (cierra #5 y #6; merge con confirmación explícita).
-2. Llevar crear hogar/unirse/ubicación/producto a `useActionMutationId` (o a la outbox) ahora que el BFF acepta la clave.
-3. `/offline` muestra "Sin conexión" también ante un 429 del refresh; valorar un texto específico leído en cliente (`?motivo=`) sin romper el precache.
-4. Ejecutar k6 `load`/`spike` (y `soak` antes de producción).
-5. Hallazgos QA bajos no abordados: completar `@param`/`@returns` en `features/pantry/api.ts` y `hooks.ts`.
-6. Hallazgos abiertos de §3 (doble contraseña, contraste del slider, `aria-disabled` en auth).
-7. Siguiente etapa (escáner de códigos de barras con XState) cuando despensa-backend#13 aporte la búsqueda por código.
+1. PR `feature/pantry-followups` → `develop` (merge con confirmación explícita).
+2. Pruebas manuales en Chrome (recorrido en §0) y registrar los hallazgos.
+3. Cuando el backend resuelva despensa-backend#16, repetir k6 `load`/`spike`. Valorar un endpoint agregado del dashboard (4 llamadas → 1).
+4. Siguiente etapa: escáner de códigos de barras (XState v5 + `BarcodeDetector` con fallback), que depende de la búsqueda por código de despensa-backend#13. Pantalla en Stitch con `implement-stitch-screen`.
+5. Pantallas que ya tienen hooks y aún no tienen UI: alta de lote y de producto (`useCreateProductMutation`, `useCreateLocationMutation`).
+6. Detalle menor: `/offline?motivo=limite` mantiene el `<title>` y el pie genéricos.
+7. Decisión de producto: doble campo de contraseña en el registro (§3.1).

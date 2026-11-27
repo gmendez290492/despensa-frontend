@@ -56,6 +56,20 @@ describe("ForgotPasswordForm", () => {
     expect(screen.getByRole("link", { name: /volver a iniciar sesión/i })).toHaveAttribute("href", "/login");
   });
 
+  it("sin conexión marca el envío aria-disabled con su pista y no envía", async () => {
+    render(<ForgotPasswordForm />);
+    act(() => useUiStore.setState({ connectionStatus: "offline" }));
+
+    const submit = screen.getByRole("button", { name: /enviar enlace/i });
+    expect(submit).toHaveAttribute("aria-disabled", "true");
+    expect(submit).toHaveAccessibleDescription("Necesitas conexión para recuperar tu contraseña.");
+    fireEvent.change(screen.getByLabelText(/correo electrónico/i), {
+      target: { value: "ana@despensa-qa.com" },
+    });
+    fireEvent.click(submit);
+    await waitFor(() => expect(forgotMutate).not.toHaveBeenCalled());
+  });
+
   it("un 429 indica cuánto esperar", async () => {
     render(<ForgotPasswordForm />);
     fireEvent.change(screen.getByLabelText(/correo electrónico/i), { target: { value: "ana@example.com" } });
@@ -100,6 +114,22 @@ describe("ResetPasswordForm", () => {
     expect(resetMutate.mock.calls[0]![0]).toEqual({ token: TOKEN, new_password: "otra-clave-segura" });
     act(() => resetMutate.mock.calls[0]![1]!.onSuccess!(undefined));
     expect(replace).toHaveBeenCalledWith("/login?reset=1");
+  });
+
+  it("sin conexión marca el envío aria-disabled con su pista y no envía", async () => {
+    searchParams = new URLSearchParams({ token: TOKEN });
+    window.history.replaceState(null, "", `/reset-password?token=${TOKEN}`);
+    render(<ResetPasswordForm />);
+    act(() => useUiStore.setState({ connectionStatus: "offline" }));
+
+    const submit = screen.getByRole("button", { name: /guardar contraseña nueva/i });
+    expect(submit).toHaveAttribute("aria-disabled", "true");
+    expect(submit).toHaveAccessibleDescription("Necesitas conexión para cambiar tu contraseña.");
+    fireEvent.change(screen.getByLabelText(/contraseña nueva/i), {
+      target: { value: "otra-clave-segura" },
+    });
+    fireEvent.click(submit);
+    await waitFor(() => expect(resetMutate).not.toHaveBeenCalled());
   });
 
   it("400 invalid-reset-token cambia a la vista de enlace inválido", async () => {

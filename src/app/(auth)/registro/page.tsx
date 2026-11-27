@@ -43,10 +43,10 @@ export default function RegisterPage() {
 
       <main className="flex-1 pt-7 pb-8">
         <section className="mb-6">
-          <p className="mb-1.5 text-[11px] font-bold tracking-[0.16em] text-muted-foreground uppercase">
+          <p className="mb-1.5 text-[0.6875rem] font-bold tracking-[0.16em] text-muted-foreground uppercase">
             Registro
           </p>
-          <h1 className="mb-2 font-display text-[28px] leading-[1.2] font-normal tracking-tight text-foreground">
+          <h1 className="mb-2 font-display text-[1.75rem] leading-[1.2] font-normal tracking-tight text-foreground">
             Abre tu cuaderno de despensa
           </h1>
           <p className="text-sm leading-relaxed text-muted-foreground">
@@ -61,7 +61,7 @@ export default function RegisterPage() {
       </main>
 
       <footer className="border-t border-border-sand py-4 text-center">
-        <p className="text-[11px] leading-relaxed text-muted-foreground">
+        <p className="text-[0.6875rem] leading-relaxed text-muted-foreground">
           Al crear tu cuenta aceptas los Términos y el Aviso de Privacidad de Despensa.
         </p>
       </footer>

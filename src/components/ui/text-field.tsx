@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 export function Label({ className, ...props }: ComponentProps<typeof LabelPrimitive.Root>) {
   return (
     <LabelPrimitive.Root
-      className={cn("block text-[13px] font-semibold text-foreground", className)}
+      className={cn("block text-[0.8125rem] font-semibold text-foreground", className)}
       {...props}
     />
   );
@@ -38,7 +38,7 @@ export function Label({ className, ...props }: ComponentProps<typeof LabelPrimit
  * ```
  */
 export const inputBaseClass = cn(
-  "h-12 w-full rounded-[4px] border border-input-border bg-surface/70 px-3.5 font-sans text-[15px] text-foreground",
+  "h-12 w-full rounded-[4px] border border-input-border bg-surface/70 px-3.5 font-sans text-[0.9375rem] text-foreground",
   "placeholder:text-input-placeholder transition-colors",
   "focus:bg-surface-lowest focus:border-primary-container focus:outline-none focus:ring-2 focus:ring-primary-container/20",
   "disabled:cursor-not-allowed disabled:opacity-60",

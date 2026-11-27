@@ -21,7 +21,14 @@ import {
   renewedOutboxChanges,
   type OutboxSender,
 } from "@/lib/offline/outbox";
-import type { ConsumeInput, ConsumePayload, CreatePantryInput, JoinPantryInput } from "@/lib/pantry/schemas";
+import type {
+  ConsumeInput,
+  ConsumePayload,
+  CreateLocationInput,
+  CreatePantryInput,
+  CreateProductInput,
+  JoinPantryInput,
+} from "@/lib/pantry/schemas";
 import { consumeSchema } from "@/lib/pantry/schemas";
 import { useUiStore } from "@/stores/ui-store";
 import { authKeys, fetchCurrentUser, type UserResponse } from "@/features/auth/api";
@@ -29,17 +36,21 @@ import { useCurrentUser } from "@/features/auth/hooks";
 import {
   BFF_PANTRY_ROUTES,
   consumeRequest,
+  createLocationRequest,
   createPantryRequest,
+  createProductRequest,
   fetchBatches,
   fetchLocations,
   fetchPantries,
   fetchUnreadNotifications,
   joinPantryRequest,
   pantryKeys,
+  productKeys,
   type ConsumeResultResponse,
   type FoodBatchResponse,
   type LocationResponse,
   type PantryResponse,
+  type ProductResponse,
 } from "@/features/pantry/api";
 import {
   ageBatches,
@@ -155,6 +166,7 @@ export function useActivePantry(): ActivePantryState {
  * Ubicaciones del hogar.
  *
  * @param pantryId - Hogar activo (`null` desactiva la query).
+ * @returns `UseQueryResult<LocationResponse[], ProblemDetailError>`.
  */
 export function useLocations(pantryId: string | null) {
   return useQuery<LocationResponse[], ProblemDetailError>({
@@ -242,7 +254,11 @@ export function useBatches(pantryId: string | null) {
   });
 }
 
-/** Número de alertas sin leer (campana de la cabecera). */
+/**
+ * Número de alertas sin leer (campana de la cabecera).
+ *
+ * @returns `UseQueryResult<number, ProblemDetailError>`.
+ */
 export function useUnreadNotificationsCount() {
   return useQuery<number, ProblemDetailError>({
     queryKey: pantryKeys.unreadNotifications(),
@@ -264,23 +280,119 @@ function useOnPantryCreated() {
   };
 }
 
-/** Crear hogar (solo con red: no tiene sentido encolarlo). */
+/**
+ * Variables de las mutaciones online idempotentes (crear hogar, unirse, crear
+ * ubicación, crear producto). La clave viaja como variable porque en TanStack
+ * v5 `mutationFn` no ve el contexto de `onMutate`.
+ */
+export interface IdempotentVariables<TInput> {
+  /** Cuerpo ya validado con Zod. */
+  input: TInput;
+  /**
+   * `Idempotency-Key` de la intención del usuario: obténla con
+   * `useActionMutationId().idFor(...)` para que el doble toque y el reintento
+   * tras 5xx/timeout reutilicen la misma clave.
+   */
+  idempotencyKey: string;
+}
+
+/** Variables de {@link useCreateLocationMutation}. */
+export interface CreateLocationVariables extends IdempotentVariables<CreateLocationInput> {
+  /** Hogar donde se crea la ubicación. */
+  pantryId: string;
+}
+
+/**
+ * `true` si FastAPI aún procesa otra petición con la misma `Idempotency-Key`
+ * (`409 idempotency-request-in-progress`, p. ej. doble toque o reintento
+ * mientras la primera sigue en curso). Nunca se reintenta solo: la UI pide al
+ * usuario que espere y vuelva a intentarlo (con la misma clave, que
+ * `useActionMutationId` conserva por ser un error transitorio).
+ *
+ * @param error - Error de la mutación.
+ * @returns `true` si es ese conflicto.
+ */
+export function isIdempotencyInProgressError(error: unknown): boolean {
+  return isProblemDetailError(error) && error.is(PROBLEM_TYPES.idempotencyRequestInProgress);
+}
+
+/**
+ * Crear hogar (solo con red: no tiene sentido encolarlo). Envía
+ * `Idempotency-Key`; sin reintentos automáticos (`retry: false`).
+ *
+ * @returns `UseMutationResult<PantryResponse, ProblemDetailError, IdempotentVariables<CreatePantryInput>>`.
+ *
+ * @example
+ * ```tsx
+ * const create = useCreatePantryMutation();
+ * const mutationId = useActionMutationId();
+ * create.mutate(
+ *   { input: values, idempotencyKey: mutationId.idFor(["create-pantry", values]) },
+ *   { onSuccess: () => mutationId.release(), onError: (error) => mutationId.release(error) },
+ * );
+ * ```
+ */
 export function useCreatePantryMutation() {
   const onCreated = useOnPantryCreated();
-  return useMutation<PantryResponse, ProblemDetailError, CreatePantryInput>({
-    mutationFn: createPantryRequest,
+  return useMutation<PantryResponse, ProblemDetailError, IdempotentVariables<CreatePantryInput>>({
+    mutationFn: ({ input, idempotencyKey }) => createPantryRequest(input, idempotencyKey),
     networkMode: "online",
+    retry: false,
     onSuccess: onCreated,
   });
 }
 
-/** Unirse a un hogar con código de invitación (solo con red). */
+/**
+ * Unirse a un hogar con código de invitación (solo con red). Envía
+ * `Idempotency-Key`; sin reintentos automáticos.
+ *
+ * @returns `UseMutationResult<PantryResponse, ProblemDetailError, IdempotentVariables<JoinPantryInput>>`.
+ */
 export function useJoinPantryMutation() {
   const onCreated = useOnPantryCreated();
-  return useMutation<PantryResponse, ProblemDetailError, JoinPantryInput>({
-    mutationFn: joinPantryRequest,
+  return useMutation<PantryResponse, ProblemDetailError, IdempotentVariables<JoinPantryInput>>({
+    mutationFn: ({ input, idempotencyKey }) => joinPantryRequest(input, idempotencyKey),
     networkMode: "online",
+    retry: false,
     onSuccess: onCreated,
+  });
+}
+
+/**
+ * Crear una ubicación en un hogar (solo con red). Envía `Idempotency-Key`;
+ * al terminar añade la ubicación a `pantryKeys.locations(pantryId)` e
+ * invalida solo esa clave.
+ *
+ * @returns `UseMutationResult<LocationResponse, ProblemDetailError, CreateLocationVariables>`.
+ */
+export function useCreateLocationMutation() {
+  const queryClient = useQueryClient();
+  return useMutation<LocationResponse, ProblemDetailError, CreateLocationVariables>({
+    mutationFn: ({ pantryId, input, idempotencyKey }) => createLocationRequest(pantryId, input, idempotencyKey),
+    networkMode: "online",
+    retry: false,
+    onSuccess: (location, { pantryId }) => {
+      queryClient.setQueryData<LocationResponse[]>(pantryKeys.locations(pantryId), (previous) =>
+        previous && !previous.some((item) => item.id === location.id) ? [...previous, location] : previous,
+      );
+      void queryClient.invalidateQueries({ queryKey: pantryKeys.locations(pantryId) });
+    },
+  });
+}
+
+/**
+ * Crear un producto en el catálogo (solo con red). Envía `Idempotency-Key`;
+ * al terminar invalida las búsquedas de productos (`productKeys.all`).
+ *
+ * @returns `UseMutationResult<ProductResponse, ProblemDetailError, IdempotentVariables<CreateProductInput>>`.
+ */
+export function useCreateProductMutation() {
+  const queryClient = useQueryClient();
+  return useMutation<ProductResponse, ProblemDetailError, IdempotentVariables<CreateProductInput>>({
+    mutationFn: ({ input, idempotencyKey }) => createProductRequest(input, idempotencyKey),
+    networkMode: "online",
+    retry: false,
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: productKeys.all }),
   });
 }
 
@@ -474,9 +586,11 @@ export interface ActionMutationId {
 
 /**
  * `Idempotency-Key` estable por **acción del usuario** en un formulario: el
- * reintento manual del mismo consumo reutiliza la clave (FastAPI lo
+ * doble toque o el reintento manual del mismo cuerpo (consumo, crear hogar,
+ * unirse, crear ubicación o producto) reutiliza la clave (FastAPI lo
  * deduplica), y se regenera al cambiar el cuerpo (si no, `422
- * idempotency-key-reused`), tras el éxito o tras un error definitivo.
+ * idempotency-key-reused`), tras el éxito o tras un error definitivo. Incluye
+ * en `body` todo lo que define la petición (ruta incluida, p. ej. `pantryId`).
  *
  * @returns {@link ActionMutationId}.
  *
@@ -795,6 +909,7 @@ export async function countPendingOutbox(userId?: string): Promise<number> {
  * Descarta un conflicto de la outbox (el usuario acepta la verdad del servidor).
  *
  * @param id - `id` de la fila.
+ * @returns Promesa que se resuelve al borrar la fila.
  */
 export async function discardOutboxRecord(id: number): Promise<void> {
   const { offlineDb } = await import("@/lib/db/offline-db");

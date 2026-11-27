@@ -48,3 +48,12 @@ Eres el **Auditor de Calidad, Seguridad y Resiliencia de `despensa-frontend`**. 
 ## Formato de Reporte
 
 Clasifica cualquier hallazgo por severidad (**Bloqueante**, **Media**, **Sugerencia**), indicando ruta exacta del archivo, línea y corrección recomendada. Incluye una tabla de cobertura JSDoc (documentados/total de exports por carpeta) y las guías de Modern Web Guidance verificadas.
+
+## Suites contra el backend real
+
+Además de las 4 puertas, antes de un PR que toque BFF, outbox o seguridad, ejecuta la skill `backend-integration-suites`: E2E (`pnpm exec playwright test`, incluye `tests/e2e/security/`) y k6 (`pnpm test:stress`). Trampas conocidas:
+
+- **Rate limits:** el backend por defecto da 429 en estas suites, así que hay que relajarlos y **restaurarlos** al terminar.
+- **Proceso viejo en el puerto 3000:** comprueba que no quede un `next start` de una sesión anterior (Windows: `Get-NetTCPConnection -LocalPort 3000`). Si lo hay, sirve un build viejo y los resultados no valen.
+- **Diagnóstico de latencia en k6:** atribúyela comparando contra FastAPI directo (`Authorization: Bearer`) antes de culpar al BFF. Ver despensa-backend#16.
+- **Pruebas manuales en Chrome** (Claude Code con `claude --chrome`): recorre onboarding → panel → consumo → sin conexión → reconexión → logout con cambios pendientes. Revisa la consola y la pestaña Application (cookies `HttpOnly`, ningún token en `localStorage`/IndexedDB).

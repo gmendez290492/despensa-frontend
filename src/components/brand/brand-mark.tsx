@@ -33,7 +33,7 @@ export function BrandMark({ className }: { className?: string }) {
         <span className="font-display text-xl leading-none font-medium tracking-tight text-primary-container">
           Despensa
         </span>
-        <span className="mt-0.5 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
+        <span className="mt-0.5 text-[0.625rem] font-semibold tracking-widest text-muted-foreground uppercase">
           Pantry &amp; Provisions
         </span>
       </div>

@@ -50,6 +50,13 @@ export const LOGIN_PATH = "/login";
 export const DEFAULT_AUTHENTICATED_PATH = "/";
 /** Fallback offline (también destino del refresh GET si el backend está caído). */
 export const OFFLINE_PATH = "/offline";
+/** Query param de {@link OFFLINE_PATH} que indica por qué se llegó allí. */
+export const OFFLINE_REASON_PARAM = "motivo";
+/**
+ * Valor de {@link OFFLINE_REASON_PARAM} cuando el refresh GET recibió un `429`
+ * (`/offline?motivo=limite`): hay red, pero FastAPI pide esperar.
+ */
+export const OFFLINE_REASON_RATE_LIMIT = "limite";
 
 /** Route Handler que rota tokens y redirige de vuelta (`?next=`). */
 export const BFF_REFRESH_REDIRECT_PATH = "/api/bff/auth/refresh";

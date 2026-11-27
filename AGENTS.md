@@ -50,6 +50,7 @@ Aplicación web y PWA *Offline-First* construida sobre **Next.js 16 (App Router 
 - **Skills procedimentales (`.agents/skills/`):**
   - `implement-stitch-screen`: Flujo completo desde Stitch MCP hasta ruta Next.js integrada (incluye Modern Web Guidance y JSDoc).
   - `offline-outbox-mutation`: Receta estándar para mutaciones optimistas con soporte sin red y resolución de conflictos.
+  - `backend-integration-suites`: E2E, seguridad (Playwright) y estrés (k6) contra FastAPI local con rate limits relajados; restaura el entorno al terminar.
   - `gitflow-pr-delivery`: Flujo de ramas, puertas de calidad y entrega por Pull Request con CI en verde (solo a petición del usuario; merge con confirmación explícita).
   - `modern-web-guidance`: Skill externa de buenas prácticas de plataforma web (ver abajo).
 
@@ -63,6 +64,8 @@ Aplicación web y PWA *Offline-First* construida sobre **Next.js 16 (App Router 
 - **Entorno:** Windows + pnpm. Ejecuta las puertas de calidad de §3 antes de cualquier push.
 - **Next.js 16:** antes de escribir código de Next, consulta la guía en `node_modules/next/dist/docs/` (ver bloque al inicio).
 - **MCP:** servidor `stitch` para pantallas de Google Stitch (Project ID `1951021510829166998`) y `gh` / MCP `github` para PRs y check runs.
+- **Backend (`gmendez290492/despensa-backend`, local en `..\Despnsa project`):** cualquier hueco de contrato, bug o rendimiento del backend se reporta como issue en ese repo, con evidencia (status, `correlation_id`, métricas). Los issues del backend que piden cambios al frontend se abren en este repo. Gitflow cierra issues con `Closes #N` solo al llegar a `main`: al fusionar en `develop`, ciérralos a mano con un comentario.
+- **Retomar el trabajo:** lee `docs/FRONTEND_CONTEXT.md` (§0 "Traspaso" y §6 "Próximos pasos") y `gh issue list` en ambos repos antes de empezar.
 
 ## 3. Puertas de Calidad y Gitflow
 

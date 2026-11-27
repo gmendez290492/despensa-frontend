@@ -83,7 +83,7 @@ export function TimeZoneField({ id, value, onChange, autoDetected, error, ref }:
         <div className="flex min-w-0 items-center gap-2.5 pr-2">
           <Globe aria-hidden="true" className="size-4 shrink-0 text-primary-container" strokeWidth={1.8} />
           <div className="min-w-0">
-            <p id={id} className="truncate text-[13px] font-semibold text-foreground">
+            <p id={id} className="truncate text-[0.8125rem] font-semibold text-foreground">
               <span className="sr-only">Zona horaria: </span>
               {value || "Detectando zona horaria…"}
             </p>
@@ -101,7 +101,7 @@ export function TimeZoneField({ id, value, onChange, autoDetected, error, ref }:
           onClick={() => setEditing((current) => !current)}
           aria-expanded={editing}
           aria-controls={editing ? selectId : undefined}
-          className="inline-flex min-h-11 shrink-0 items-center rounded-[4px] px-2 text-[13px] font-semibold text-primary-container hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-container"
+          className="inline-flex min-h-11 shrink-0 items-center rounded-[4px] px-2 text-[0.8125rem] font-semibold text-primary-container hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-container"
         >
           {editing ? "Listo" : "Cambiar"}
           <span className="sr-only"> zona horaria</span>

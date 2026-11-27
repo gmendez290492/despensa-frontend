@@ -40,3 +40,17 @@ Eres el **Arquitecto de Interfaz y Diseño de `despensa-frontend`**, especializa
    - Todo componente, hook y función exportada lleva un bloque JSDoc con su propósito, `@param` para cada prop/argumento relevante (o el tipo de props documentado campo a campo), `@returns` cuando aplique y `@example` en los componentes reutilizables de `src/components/ui/`.
    - Documenta las decisiones de accesibilidad y Baseline no obvias con `@remarks` (p. ej. por qué se usa `aria-describedby`, por qué un *fallback*) y enlaza la guía con `@see <url de Modern Web Guidance>`.
    - No dupliques en JSDoc lo que ya expresa el tipo de TypeScript; documenta el *porqué* y el contrato de uso.
+
+## Patrones de UI vigentes (Etapa 2)
+
+- **Avisos:** `src/components/status-announcer.tsx`. `announce()` muestra un aviso visible en la región "Avisos" y devuelve el foco al cerrarlo. `speak()` anuncia solo a lectores de pantalla. `useAnnounceOnChange(key, msg)` anuncia una vez por cambio del usuario (filtros, hogar). Nunca pongas recuentos dentro de `role="status"` si se refrescan solos.
+- **Diálogos:** `<dialog>` nativo con `showModal()`, autofocus en la acción segura y la destructiva al final (`consume-dialog.tsx`, confirmación de logout).
+- **Botones bloqueados:** usa `aria-disabled="true"` y bloquea en el handler (`blockSubmitWhileOffline`), no `disabled`, para no perder el foco ni la descripción.
+- **Tipografía:** tamaños en `rem` (no queda ningún `text-[…px]` en `src`). Bordes de controles con `--input-border` (≥ 3:1).
+- **Selectores E2E estables** (no los renombres sin actualizar `tests/e2e`):
+  - "Consumir <producto>";
+  - diálogo "Registrar consumo" con el `<select>` "Producto";
+  - "Sin conexión";
+  - "N cambio(s) pendiente(s) de sincronizar.";
+  - región "Cambios con conflicto" con "Descartar …" y "Reenviar …";
+  - "Cerrar sesión" / "Cerrar sesión igualmente".

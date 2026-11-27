@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ProblemDetailError, problemTypeUri } from "@/lib/api/problem";
 import { useUiStore } from "@/stores/ui-store";
@@ -142,5 +142,24 @@ describe("RegisterForm", () => {
     fireEvent.click(screen.getByRole("button", { name: /crear cuenta/i }));
 
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/login?registered=1"));
+  });
+
+  it("sin conexión marca el envío aria-disabled con su pista y no envía", async () => {
+    render(<RegisterForm />);
+    await screen.findByText("(detectada automáticamente)");
+    act(() => useUiStore.setState({ connectionStatus: "offline" }));
+
+    const submit = screen.getByRole("button", { name: /crear cuenta/i });
+    expect(submit).toHaveAttribute("aria-disabled", "true");
+    expect(submit).toHaveAccessibleDescription("Necesitas conexión para crear tu cuenta.");
+
+    fillValidForm();
+    fireEvent.click(submit);
+    await waitFor(() => expect(mutate).not.toHaveBeenCalled());
+
+    act(() => useUiStore.setState({ connectionStatus: "online" }));
+    expect(submit).not.toHaveAttribute("aria-disabled");
+    fireEvent.click(submit);
+    await waitFor(() => expect(mutate).toHaveBeenCalledTimes(1));
   });
 });
