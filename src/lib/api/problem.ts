@@ -19,7 +19,17 @@ export const PROBLEM_TYPES = {
   rateLimitExceeded: "rate-limit-exceeded",
   invalidResetToken: "invalid-reset-token",
   pantryAccessDenied: "pantry-access-denied",
+  pantryNotFound: "pantry-not-found",
+  locationNotFound: "location-not-found",
+  productNotFound: "product-not-found",
+  invalidInviteCode: "invalid-invite-code",
+  alreadyPantryMember: "already-pantry-member",
+  unitNotFound: "unit-not-found",
   insufficientStock: "insufficient-stock",
+  notificationNotFound: "notification-not-found",
+  // Idempotency-Key (despensa-backend#11): 409 transitorio / 422 conflicto
+  idempotencyRequestInProgress: "idempotency-request-in-progress",
+  idempotencyKeyReused: "idempotency-key-reused",
   // FastAPI 422 (RequestValidationError) normalizado por el BFF
   validationError: "validation-error",
   // Generados por el BFF

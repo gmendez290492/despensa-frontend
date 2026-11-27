@@ -16,6 +16,8 @@ const eslintConfig = defineConfig([
     "public/swe-worker-*.js",
     "src/lib/api/schema.d.ts",
     "next-env.d.ts",
+    // Scripts k6 (runtime propio, no Node ni navegador) y sus informes.
+    "tests/stress/**",
   ]),
 ]);
 

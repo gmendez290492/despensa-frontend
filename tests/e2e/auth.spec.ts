@@ -38,7 +38,7 @@ test.describe("auth", () => {
     await page.getByRole("button", { name: /crear cuenta/i }).click();
 
     await expect(page).toHaveURL(/\/$/);
-    await expect(page.getByRole("heading", { name: "Hola, Ana QA" })).toBeVisible();
+    await expect(page.getByText("Hola, Ana", { exact: true })).toBeVisible();
 
     await page.getByRole("button", { name: /cerrar sesión/i }).click();
     await expect(page).toHaveURL(/\/login$/);
@@ -52,7 +52,7 @@ test.describe("auth", () => {
     await page.getByLabel("Contraseña", { exact: true }).filter({ visible: true }).fill(password);
     await page.getByRole("button", { name: /iniciar sesión/i }).click();
     await expect(page).toHaveURL(/\/$/);
-    await expect(page.getByRole("heading", { name: "Hola, Ana QA" })).toBeVisible();
+    await expect(page.getByText("Hola, Ana", { exact: true })).toBeVisible();
   });
 
   test("registro con correo existente muestra error inline", async ({ page }, testInfo) => {

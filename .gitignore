@@ -44,3 +44,6 @@ next-env.d.ts
 
 # symlink local de la skill instalada (copia versionada en .agents/skills/modern-web-guidance)
 .claude/skills/modern-web-guidance
+
+# informes de k6 (pnpm test:stress)
+tests/stress/reports/

@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { clearUserOfflineData, type ClearableOfflineDb } from "@/lib/offline/clear-user-data";
+import {
+  clearUserOfflineData,
+  countUnsyncedOutboxRecords,
+  type ClearableOfflineDb,
+} from "@/lib/offline/clear-user-data";
 
 function createFakeDb({ pending = 0, failClear = false } = {}) {
   const count = vi.fn(async () => pending);
@@ -101,5 +105,21 @@ describe("clearUserOfflineData", () => {
     const result = await clearUserOfflineData({ db: createFakeDb().db, cacheStorage: null });
     expect(result.deletedCaches).toEqual([]);
     expect(result.errors).toEqual([]);
+  });
+});
+
+describe("countUnsyncedOutboxRecords", () => {
+  it("cuenta todas las filas de la outbox (pending, syncing, conflict, failed)", async () => {
+    const count = vi.fn(async () => 4);
+    const db = { outboxQueue: { count } } as unknown as ClearableOfflineDb;
+    await expect(countUnsyncedOutboxRecords({ db })).resolves.toBe(4);
+    expect(count).toHaveBeenCalledOnce();
+  });
+
+  it("devuelve 0 si IndexedDB falla (no bloquea el logout)", async () => {
+    const db = {
+      outboxQueue: { count: vi.fn(async () => Promise.reject(new Error("idb no disponible"))) },
+    } as unknown as ClearableOfflineDb;
+    await expect(countUnsyncedOutboxRecords({ db })).resolves.toBe(0);
   });
 });

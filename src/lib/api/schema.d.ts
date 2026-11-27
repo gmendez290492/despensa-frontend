@@ -292,6 +292,8 @@ export interface paths {
         /**
          * Consumir alimento aplicando algoritmo FEFO inteligente
          * @description Descuenta stock automáticamente del lote que vence más pronto (First Expired, First Out).
+         *
+         *     Con `Idempotency-Key`, un reintento devuelve el resultado original sin volver a descontar.
          */
         post: operations["consume_product_api_v1_pantries__pantry_id__consume_post"];
         delete?: never;
@@ -1375,7 +1377,10 @@ export interface operations {
     create_pantry_api_v1_pantries_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Clave única por operación (p. ej. UUID v4). Reenviar la misma clave con el mismo cuerpo devuelve la respuesta original sin repetir el efecto, con la cabecera `Idempotent-Replayed: true`. Caduca a las IDEMPOTENCY_KEY_TTL_HOURS horas (168 por defecto). */
+                "Idempotency-Key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -1394,13 +1399,56 @@ export interface operations {
                     "application/json": components["schemas"]["PantryResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Error de negocio o `invalid-idempotency-key` (formato de la clave). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Format: uri */
+                        type?: string;
+                        title?: string;
+                        status?: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description `idempotency-request-in-progress`: otra petición con la misma clave sigue en curso. Incluye `Retry-After`; es transitorio y se debe reintentar con la misma clave. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Format: uri */
+                        type?: string;
+                        title?: string;
+                        status?: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description Cuerpo inválido (application/json) o `idempotency-key-reused`: la clave ya se usó con otra petición (application/problem+json). */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": {
+                        /** Format: uri */
+                        type?: string;
+                        title?: string;
+                        status?: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
                 };
             };
         };
@@ -1408,7 +1456,10 @@ export interface operations {
     join_pantry_api_v1_pantries_join_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Clave única por operación (p. ej. UUID v4). Reenviar la misma clave con el mismo cuerpo devuelve la respuesta original sin repetir el efecto, con la cabecera `Idempotent-Replayed: true`. Caduca a las IDEMPOTENCY_KEY_TTL_HOURS horas (168 por defecto). */
+                "Idempotency-Key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -1427,13 +1478,56 @@ export interface operations {
                     "application/json": components["schemas"]["PantryResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Error de negocio o `invalid-idempotency-key` (formato de la clave). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Format: uri */
+                        type?: string;
+                        title?: string;
+                        status?: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description `idempotency-request-in-progress`: otra petición con la misma clave sigue en curso. Incluye `Retry-After`; es transitorio y se debe reintentar con la misma clave. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Format: uri */
+                        type?: string;
+                        title?: string;
+                        status?: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description Cuerpo inválido (application/json) o `idempotency-key-reused`: la clave ya se usó con otra petición (application/problem+json). */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": {
+                        /** Format: uri */
+                        type?: string;
+                        title?: string;
+                        status?: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
                 };
             };
         };
@@ -1472,7 +1566,10 @@ export interface operations {
     create_location_api_v1_pantries__pantry_id__locations_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Clave única por operación (p. ej. UUID v4). Reenviar la misma clave con el mismo cuerpo devuelve la respuesta original sin repetir el efecto, con la cabecera `Idempotent-Replayed: true`. Caduca a las IDEMPOTENCY_KEY_TTL_HOURS horas (168 por defecto). */
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 pantry_id: string;
             };
@@ -1493,13 +1590,56 @@ export interface operations {
                     "application/json": components["schemas"]["LocationResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Error de negocio o `invalid-idempotency-key` (formato de la clave). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Format: uri */
+                        type?: string;
+                        title?: string;
+                        status?: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description `idempotency-request-in-progress`: otra petición con la misma clave sigue en curso. Incluye `Retry-After`; es transitorio y se debe reintentar con la misma clave. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Format: uri */
+                        type?: string;
+                        title?: string;
+                        status?: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description Cuerpo inválido (application/json) o `idempotency-key-reused`: la clave ya se usó con otra petición (application/problem+json). */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": {
+                        /** Format: uri */
+                        type?: string;
+                        title?: string;
+                        status?: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
                 };
             };
         };
@@ -1560,7 +1700,10 @@ export interface operations {
     create_product_api_v1_products_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Clave única por operación (p. ej. UUID v4). Reenviar la misma clave con el mismo cuerpo devuelve la respuesta original sin repetir el efecto, con la cabecera `Idempotent-Replayed: true`. Caduca a las IDEMPOTENCY_KEY_TTL_HOURS horas (168 por defecto). */
+                "Idempotency-Key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -1579,13 +1722,56 @@ export interface operations {
                     "application/json": components["schemas"]["ProductResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Error de negocio o `invalid-idempotency-key` (formato de la clave). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Format: uri */
+                        type?: string;
+                        title?: string;
+                        status?: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description `idempotency-request-in-progress`: otra petición con la misma clave sigue en curso. Incluye `Retry-After`; es transitorio y se debe reintentar con la misma clave. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Format: uri */
+                        type?: string;
+                        title?: string;
+                        status?: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description Cuerpo inválido (application/json) o `idempotency-key-reused`: la clave ya se usó con otra petición (application/problem+json). */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": {
+                        /** Format: uri */
+                        type?: string;
+                        title?: string;
+                        status?: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
                 };
             };
         };
@@ -1624,7 +1810,10 @@ export interface operations {
     add_food_batch_api_v1_pantries__pantry_id__batches_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Clave única por operación (p. ej. UUID v4). Reenviar la misma clave con el mismo cuerpo devuelve la respuesta original sin repetir el efecto, con la cabecera `Idempotent-Replayed: true`. Caduca a las IDEMPOTENCY_KEY_TTL_HOURS horas (168 por defecto). */
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 pantry_id: string;
             };
@@ -1645,13 +1834,56 @@ export interface operations {
                     "application/json": components["schemas"]["FoodBatchResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Error de negocio o `invalid-idempotency-key` (formato de la clave). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Format: uri */
+                        type?: string;
+                        title?: string;
+                        status?: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description `idempotency-request-in-progress`: otra petición con la misma clave sigue en curso. Incluye `Retry-After`; es transitorio y se debe reintentar con la misma clave. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Format: uri */
+                        type?: string;
+                        title?: string;
+                        status?: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description Cuerpo inválido (application/json) o `idempotency-key-reused`: la clave ya se usó con otra petición (application/problem+json). */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": {
+                        /** Format: uri */
+                        type?: string;
+                        title?: string;
+                        status?: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
                 };
             };
         };
@@ -1659,7 +1891,10 @@ export interface operations {
     consume_product_api_v1_pantries__pantry_id__consume_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Clave única por operación (p. ej. UUID v4). Reenviar la misma clave con el mismo cuerpo devuelve la respuesta original sin repetir el efecto, con la cabecera `Idempotent-Replayed: true`. Caduca a las IDEMPOTENCY_KEY_TTL_HOURS horas (168 por defecto). */
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 pantry_id: string;
             };
@@ -1680,13 +1915,56 @@ export interface operations {
                     "application/json": components["schemas"]["ConsumeResultResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Error de negocio o `invalid-idempotency-key` (formato de la clave). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Format: uri */
+                        type?: string;
+                        title?: string;
+                        status?: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description `idempotency-request-in-progress`: otra petición con la misma clave sigue en curso. Incluye `Retry-After`; es transitorio y se debe reintentar con la misma clave. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** Format: uri */
+                        type?: string;
+                        title?: string;
+                        status?: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description Cuerpo inválido (application/json) o `idempotency-key-reused`: la clave ya se usó con otra petición (application/problem+json). */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": {
+                        /** Format: uri */
+                        type?: string;
+                        title?: string;
+                        status?: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
                 };
             };
         };

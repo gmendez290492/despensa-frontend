@@ -42,6 +42,17 @@
   --semaforo-precaucion: #b8860b;
   --semaforo-critico: #c2410c;
   --semaforo-vencido: #ba1a1a;
+
+  /*
+   * Tinta de texto/ícono sobre el tinte del semáforo (`bg-semaforo-*\/12`).
+   * Contraste medido >= 5.8:1 sobre el tinte en blanco, surface-low y fondo
+   * (WCAG 1.4.3 AA). `--semaforo-precaucion` solo da ~3:1: úsalo en barras y
+   * puntos (con texto al lado), nunca como color de texto.
+   */
+  --semaforo-optimo-ink: #1f4a36;
+  --semaforo-precaucion-ink: #6b4a00;
+  --semaforo-critico-ink: #8f2f09;
+  --semaforo-vencido-ink: #8c1414;
 }
 
 @theme inline {
@@ -74,6 +85,10 @@
   --color-semaforo-precaucion: var(--semaforo-precaucion);
   --color-semaforo-critico: var(--semaforo-critico);
   --color-semaforo-vencido: var(--semaforo-vencido);
+  --color-semaforo-optimo-ink: var(--semaforo-optimo-ink);
+  --color-semaforo-precaucion-ink: var(--semaforo-precaucion-ink);
+  --color-semaforo-critico-ink: var(--semaforo-critico-ink);
+  --color-semaforo-vencido-ink: var(--semaforo-vencido-ink);
 
   /* Sombra ambiental de superficies elevadas (tarjetas de formulario) */
   --shadow-ambient: 0 4px 20px -2px rgb(46 71 59 / 0.06), 0 2px 6px -1px rgb(0 0 0 / 0.03);
@@ -86,6 +101,42 @@ body {
   background-color: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+}
+
+/*
+ * Shell autenticado con barra inferior fija: el navegador desplaza el foco por
+ * encima de ella (WCAG 2.4.11). Modern Web Guidance `form-factor-adaptation`.
+ */
+html:has(.app-bottom-nav) {
+  scroll-padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+}
+/*
+ * Con un aviso visible (`StatusAnnouncerProvider`, fijo a 4.75rem del borde)
+ * se reserva también su altura medida (`--status-toast-block-size`) + 0.5rem,
+ * para que el foco nunca quede tapado por el aviso (WCAG 2.4.11).
+ * Modern Web Guidance `persistent-toast-notifications`.
+ */
+html:has(.app-bottom-nav):has(.status-toast[data-visible]) {
+  scroll-padding-bottom: calc(
+    4.75rem + var(--status-toast-block-size, 4rem) + 0.5rem + env(safe-area-inset-bottom, 0px)
+  );
+}
+
+/*
+ * Diálogos modales (`<dialog class="app-dialog">` abierto con `showModal()`).
+ * Modern Web Guidance `dialog` / `prevent-page-scroll-under-modal-dialog`:
+ * contiene el scroll dentro del diálogo y sobre el backdrop sin tocar el
+ * `overflow` de html/body (mejora progresiva: Safari lo ignora sin romper nada).
+ */
+dialog.app-dialog:modal {
+  overscroll-behavior: contain;
+}
+dialog.app-dialog::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+  /* = --foreground al 45 %. Literal a propósito: en navegadores donde
+     ::backdrop no hereda custom properties, un var() invalidaría la regla. */
+  background-color: rgb(27 28 25 / 0.45);
 }
 
 /* Slider de rango (preferencias de alerta) con tokens del tema. */
