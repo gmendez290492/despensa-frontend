@@ -42,6 +42,10 @@ Referencia canónica para desarrolladores y subagentes de `despensa-frontend`. E
 - `GET /api/v1/pantries/{pantry_id}/batches` *(Bearer, protegido IDOR)* → `200 FoodBatchResponse[]` ordenados por **FEFO** (`dias_para_vencer`, `semaforo`: `"ÓPTIMO" | "PRECAUCIÓN" | "CRÍTICO" | "VENCIDO"`, cantidades como `string` decimal).
 - `POST /api/v1/pantries/{pantry_id}/batches` *(Bearer, protegido IDOR)* → Body: `{ location_id, product_id, unit_code, quantity (>0), expiration_date (YYYY-MM-DD), purchase_date?, unit_cost? }` → `201 FoodBatchResponse`.
 - `POST /api/v1/pantries/{pantry_id}/consume` *(Bearer, protegido IDOR)* → Body: `{ product_id, quantity (>0), notes? }` → `200 ConsumeResultResponse` (`requested_quantity`, `consumed_quantity`, `remaining_stock`, `batches_affected[]`).
+- `GET /api/v1/pantries/{pantry_id}/dashboard` *(Bearer, protegido IDOR; despensa-backend #18/#19, issue frontend #10)* → `200 PantryDashboardResponse` `{ pantries, locations, batches, unread_notifications }`: `pantries` idéntico a `GET /pantries`, `locations` a `GET /pantries/{id}/locations`, `batches` a `GET /pantries/{id}/batches` (solo `available`, FEFO, con semáforo) y `unread_notifications` = no leídas del **usuario** en todas sus despensas (el `unread_count` de `GET /notifications`). Sin query params ni `Idempotency-Key`. Errores: `401 invalid-token`; `403 pantry-access-denied` si no es miembro **o la despensa no existe** (no hay `pantry-not-found`); `422` si el id no es UUID (el BFF responde antes `400 invalid-request`).
+  - **BFF:** `GET /api/bff/pantries/{pantryId}/dashboard` (`handleAuthenticated` + `uuidParams`, `Cache-Control: no-store`, `X-Correlation-ID`).
+  - **Cliente:** `usePantryDashboard(pantryId)` (`pantryKeys.dashboard(id)` = `["pantries", id, "dashboard"]`) **siembra** `pantryKeys.list()`, `locations(id)`, `batches(id)` (con la outbox re-aplicada) y `unreadNotifications()` con el `updatedAt` de llegada; no siembra los lotes si hay un consumo de ese hogar en vuelo o enviado mientras viajaba, ni ninguna clave actualizada, invalidada o en fetch propio entretanto. `usePantries` usa el dashboard del `activePantryId` guardado (cae a `GET /pantries` ante cualquier error salvo `401`). Las queries sueltas que arrancan con un dashboard en vuelo esperan su respuesta (un `403` se propaga a lotes y ubicaciones sin repetir la petición). Los refetch tras mutaciones, foco y reconexión siguen en las claves sueltas.
+  - **Fallback:** un `404` (backend sin el endpoint) desactiva el dashboard 15 min (`DASHBOARD_UNSUPPORTED_TTL_MS`) y se usan las 4 llamadas sueltas.
 
 ### 2.3 Semillas Canónicas en Base de Datos
 - **Unidades válidas (`unit_code`):** `g`, `kg`, `ml`, `l`, `pza`.
@@ -96,7 +100,7 @@ Estructura estándar devuelta por FastAPI en errores de dominio:
 | :--- | :--- | :--- |
 | **Inicio de Sesión** | `4d4e6b2187214e199d780ad47bc707ae` | `POST /auth/login` (vía BFF `/api/bff/auth/login`) |
 | **Crear Cuenta (Registro)** | `4a85f9a297184c228178ec3982dec9ed` | `POST /auth/register` + login automático (vía BFF `/api/bff/auth/register`) |
-| **Home Dashboard** | `7888102e6f53468e9258286b534611ae` | `GET /users/me`, `GET /pantries`, `GET /pantries/{id}/batches`, `GET /notifications?unread_only=true`, `GET /recipes/recommended?limit=3` |
+| **Home Dashboard** | `7888102e6f53468e9258286b534611ae` | `GET /users/me`, `GET /pantries/{id}/dashboard` (hogares + ubicaciones + lotes + no leídas; fallback a `GET /pantries`, `/locations`, `/batches`, `/notifications?unread_only=true`), `GET /recipes/recommended?limit=3` |
 | **Pantry Inventory** | `bcc49240c9a6408e8d2a1583fe082fd0` | `GET /pantries/{id}/locations`, `GET /pantries/{id}/batches`, `POST /pantries/{id}/consume` |
 | **Flujo 1: Hub Entrada Agregar Producto** | `f8feeea9718f470eac8844b59e70792f` | Hub hacia Escáner, Código Manual o Producto Fresco |
 | **Barcode & Shelf Scanner** | `750771d22b144ef68a46083fc9dd6a22` | `GET /products?q=<barcode>` |

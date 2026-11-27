@@ -27,6 +27,12 @@ export type ConsumeResultResponse = components["schemas"]["ConsumeResultResponse
 export type NotificationListResponse = components["schemas"]["NotificationListResponse"];
 /** Producto del catálogo global. */
 export type ProductResponse = components["schemas"]["ProductResponse"];
+/**
+ * Respuesta agregada del panel (`GET /pantries/{id}/dashboard`): hogares,
+ * ubicaciones, lotes FEFO y `unread_notifications`, idénticos a sus endpoints
+ * sueltos.
+ */
+export type PantryDashboardResponse = components["schemas"]["PantryDashboardResponse"];
 
 /** Cabecera de idempotencia que el BFF valida y reenvía a FastAPI. */
 export const IDEMPOTENCY_HEADER = "Idempotency-Key";
@@ -41,6 +47,7 @@ export const BFF_PANTRY_ROUTES = {
   join: "/api/bff/pantries/join",
   locations: (pantryId: string) => `/api/bff/pantries/${encodeURIComponent(pantryId)}/locations`,
   batches: (pantryId: string) => `/api/bff/pantries/${encodeURIComponent(pantryId)}/batches`,
+  dashboard: (pantryId: string) => `/api/bff/pantries/${encodeURIComponent(pantryId)}/dashboard`,
   consume: (pantryId: string) => `/api/bff/pantries/${encodeURIComponent(pantryId)}/consume`,
   products: "/api/bff/products",
   notifications: "/api/bff/notifications",
@@ -58,6 +65,12 @@ export const pantryKeys = {
   detail: (pantryId: string) => ["pantries", pantryId] as const,
   locations: (pantryId: string) => ["pantries", pantryId, "locations"] as const,
   batches: (pantryId: string) => ["pantries", pantryId, "batches"] as const,
+  /**
+   * Carga agregada del panel. Solo arranca el panel y **siembra** las claves
+   * sueltas (`list`, `locations`, `batches`, `unreadNotifications`); la UI lee
+   * siempre de esas. Cuelga de `detail(id)`: invalidar el hogar la incluye.
+   */
+  dashboard: (pantryId: string) => ["pantries", pantryId, "dashboard"] as const,
   unreadNotifications: () => ["notifications", "unread"] as const,
 };
 
@@ -165,6 +178,19 @@ export function createProductRequest(input: CreateProductInput, idempotencyKey: 
  */
 export function fetchBatches(pantryId: string): Promise<FoodBatchResponse[]> {
   return bffJson<FoodBatchResponse[]>(BFF_PANTRY_ROUTES.batches(pantryId));
+}
+
+/**
+ * `GET /api/bff/pantries/{id}/dashboard`: hogares, ubicaciones, lotes FEFO y
+ * número de alertas sin leer en una sola petición.
+ *
+ * @param pantryId - Hogar.
+ * @returns {@link PantryDashboardResponse}.
+ * @throws {ProblemDetailError} `403 pantry-access-denied` (no miembro o el
+ *   hogar no existe), `404` si el backend aún no tiene el endpoint, red, 5xx.
+ */
+export function fetchPantryDashboard(pantryId: string): Promise<PantryDashboardResponse> {
+  return bffJson<PantryDashboardResponse>(BFF_PANTRY_ROUTES.dashboard(pantryId));
 }
 
 /**

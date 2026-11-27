@@ -20,7 +20,7 @@ const reportsDir = path.join(stressDir, "reports");
 mkdirSync(reportsDir, { recursive: true });
 
 const scenario = process.env.SCENARIO ?? "smoke";
-const forwarded = ["SCENARIO", "BASE_URL", "APP_ORIGIN", "POOL_SIZE", "SOAK_DURATION"];
+const forwarded = ["SCENARIO", "BASE_URL", "APP_ORIGIN", "POOL_SIZE", "SOAK_DURATION", "DASHBOARD_MODE"];
 const env = { ...process.env, SCENARIO: scenario };
 // Con k6 local se ataca localhost; en Docker, lib.js usa host.docker.internal.
 if (process.env.K6_LOCAL === "1") env.BASE_URL ??= "http://localhost:3000";

@@ -442,6 +442,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pantries/{pantry_id}/dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Datos del panel de una despensa en una sola llamada
+         * @description Equivale a GET /pantries + /pantries/{id}/locations + /pantries/{id}/batches +
+         *     el `unread_count` de GET /notifications, con una sola autenticación y una sola
+         *     comprobación de membresía. Responde 403 si el usuario no es miembro.
+         */
+        get: operations["get_pantry_dashboard_api_v1_pantries__pantry_id__dashboard_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/": {
         parameters: {
             query?: never;
@@ -804,6 +826,32 @@ export interface components {
         PantryCreateRequest: {
             /** Name */
             name: string;
+        };
+        /**
+         * PantryDashboardResponse
+         * @description Todo lo que el panel necesita para pintar una despensa en una sola llamada.
+         */
+        PantryDashboardResponse: {
+            /**
+             * Pantries
+             * @description Despensas del usuario (igual que GET /pantries), para el selector.
+             */
+            pantries: components["schemas"]["PantryResponse"][];
+            /**
+             * Locations
+             * @description Zonas de la despensa (igual que GET /pantries/{id}/locations).
+             */
+            locations: components["schemas"]["LocationResponse"][];
+            /**
+             * Batches
+             * @description Lotes disponibles en orden FEFO (igual que GET /pantries/{id}/batches).
+             */
+            batches: components["schemas"]["FoodBatchResponse"][];
+            /**
+             * Unread Notifications
+             * @description Notificaciones sin leer del usuario (unread_count de GET /notifications).
+             */
+            unread_notifications: number;
         };
         /**
          * PantryJoinRequest
@@ -2292,6 +2340,54 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RecipeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pantry_dashboard_api_v1_pantries__pantry_id__dashboard_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pantry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PantryDashboardResponse"];
+                };
+            };
+            /** @description - `pantry-access-denied`: Pantry Access Denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type?: "https://despensa.api/errors/pantry-access-denied";
+                        title?: string;
+                        status?: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
                 };
             };
             /** @description Validation Error */

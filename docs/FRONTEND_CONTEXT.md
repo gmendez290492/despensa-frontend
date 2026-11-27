@@ -18,7 +18,8 @@
   - `Idempotency-Key` en las mutaciones online (crear hogar, unirse, ubicación, producto) y la documentación JSDoc completa de `features/pantry/{api,hooks}.ts`;
   - `/offline?motivo=limite` ante un 429 del refresh;
   - los hallazgos MWG 3, 4 y 5 (rem, contraste del slider, `aria-disabled` en auth);
-  - la skill `backend-integration-suites` y las lecciones de la Etapa 2 en los agentes.
+  - la skill `backend-integration-suites` y las lecciones de la Etapa 2 en los agentes;
+  - **issue #10**: el panel usa `GET /api/bff/pantries/{id}/dashboard` (1 petición en la primera carga con hogar guardado, 2 sin él) y siembra `list/locations/batches/unreadNotifications`; fallback a las 4 llamadas ante `404` (ver `BACKEND_API_CONTEXT.md` §2.2).
 
 **Cómo retomar:**
 1. Lee `AGENTS.md` y este documento (§1 estado, §2b Etapa 2, §6 próximos pasos).
@@ -29,13 +30,12 @@
 **Issues abiertos relevantes:**
 - Backend:
   - despensa-backend#13: validador de `purchase_date`, `ilike` sin escapar, búsqueda por código de barras, paginación. Bloquea el escáner.
-  - despensa-backend#16: la API satura a unos 60–100 req/s, con p95 de 1–2,7 s en lecturas.
-    - **PR backend #19** (CI verde, sin fusionar): el límite era la CPU por proceso. Optimizado: 1 worker pasa de 121 a 163 req/s; 4 workers, de 347 a 418 req/s.
-    - Añade `docker-compose.prod-like.yml` (imagen de producción, `WEB_CONCURRENCY=4`).
-    - Al fusionarse, **repetir k6 `load`/`spike` en modo prod-like**.
-    - El endpoint agregado del dashboard está pendiente de decisión del usuario.
-  - despensa-backend#17: **PR backend #18** (CI verde, sin fusionar). El OpenAPI documenta cada `type` problem+json como enum por status (el 409 de `/join` incluye `already-pantry-member`). Al fusionarse: copiar `docs/openapi.json` y ejecutar `pnpm generate:api` (los `type` pasan a ser uniones literales y pueden tipar `PROBLEM_TYPES`).
-- Frontend: ninguno abierto al cierre.
+  - despensa-backend#16 (rendimiento): **resuelto**. PR #19 optimiza el coste por petición y añade `docker-compose.prod-like.yml` (4 workers). PR #20 añade `GET /pantries/{id}/dashboard`. Resultados k6 vía BFF en prod-like:
+    - `load` 50 VUs, p95 del panel: 4,8 s (dev, 1 proceso) → 112 ms (4 llamadas) → **32 ms** (dashboard).
+    - `spike` 200 VUs, p95: 9,7 s → 3,65 s → **50 ms**, 0 % de fallos, 64 paneles/s.
+  - despensa-backend#17: resuelto en PR #18 (enum de `type` problem+json por status). `openapi.json` sincronizado; todos los slugs existen en `PROBLEM_TYPES`.
+  - despensa-backend#21 → **PR backend #22** (CI verde, pendiente de merge): 401 documentado en todas las rutas con Bearer y el 422 pasa a ser `application/problem+json` también en el comportamiento (`validation-error`, `errors: [{loc,msg,type}]`, sin `input`). Compatible: `toFieldErrors` ya lo cubre y ningún tipo importa `HTTPValidationError`. Tras el merge: sincronizar `openapi.json`, `pnpm generate:api` y, cuando no queden backends antiguos, quitar la rama `Array.isArray(body.detail)` de `src/lib/api/problem.ts`.
+- Frontend: #10 (dashboard agregado) implementado en `feature/pantry-followups` (PR #9). Se cierra a mano al fusionar en `develop`.
 
 **Pendiente de esta sesión:** las pruebas manuales en Chrome (extensión Claude in Chrome) no se pudieron ejecutar porque las herramientas del navegador no estaban activas. Se retoma con `claude --chrome --resume` (Claude Code) o con el navegador de Antigravity. Recorrido sugerido:
 1. Registro y onboarding: crear hogar e invitar.
@@ -70,11 +70,11 @@
 |---|---|
 | `pnpm lint` | ✅ 0 errores |
 | `pnpm typecheck` | ✅ App + SW |
-| `pnpm test` | ✅ 556/556 (34 archivos) |
+| `pnpm test` | ✅ 574/574 (35 archivos) |
 | `pnpm build` | ✅ `/offline` estática; `public/sw.js` precachea 35 URLs (1.18 MB) |
 | Playwright E2E (`pnpm exec playwright test`, incluye `security/`) | ✅ 46/46 (Desktop + Mobile Chrome) con FastAPI local y rate limits relajados |
 | k6 (`pnpm test:stress`): smoke, consume_contention, refresh_storm, idempotent_replay | ✅ 4/4 |
-| k6 `load` (50 VUs, 6 min) / `spike` (200 VUs) | ⚠️ 0 errores en 18 273 / 7 877 peticiones, pero se superan los umbrales de latencia (p95 `batches` 3,8 s / 9,7 s). El cuello de botella es el backend (despensa-backend#16) |
+| k6 `load` / `spike` en prod-like, `DASHBOARD_MODE=aggregate` | ✅ p95 32 ms / 50 ms, 0 errores (`split`: 112 ms / 3,65 s) |
 | Pruebas manuales en Chrome | ⏳ Pendientes (ver §0) |
 
 ---
@@ -205,7 +205,7 @@ Ya cumplía antes: `<form>` + `<label for>`, `type="email"`, toggle "mostrar con
 
 1. PR `feature/pantry-followups` → `develop` (merge con confirmación explícita).
 2. Pruebas manuales en Chrome (recorrido en §0) y registrar los hallazgos.
-3. Cuando se fusionen los PR backend #18 y #19: regenerar `schema.d.ts` y repetir k6 `load`/`spike` contra `docker-compose.prod-like.yml`. El usuario decide si se hace un endpoint agregado del dashboard (4 llamadas → 1).
+3. Cuando se fusione el PR backend #22: sincronizar `openapi.json`, regenerar `schema.d.ts` y pasar las puertas.
 4. Siguiente etapa: escáner de códigos de barras (XState v5 + `BarcodeDetector` con fallback), que depende de la búsqueda por código de despensa-backend#13. Pantalla en Stitch con `implement-stitch-screen`.
 5. Pantallas que ya tienen hooks y aún no tienen UI: alta de lote y de producto (`useCreateProductMutation`, `useCreateLocationMutation`).
 6. Detalle menor: `/offline?motivo=limite` mantiene el `<title>` y el pie genéricos.
