@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { PROBLEM_TYPES, ProblemDetailError, problemTypeUri } from "@/lib/api/problem";
 import { unwrap } from "@/lib/api/server-client";
-import { handleAuthenticated } from "@/lib/bff/authenticated-route";
+import { handleAuthenticated, idempotencyHeaders } from "@/lib/bff/authenticated-route";
 import { getCorrelationId, handleError } from "@/lib/bff/http";
 import { createProductSchema, productSearchSchema } from "@/lib/pantry/schemas";
 
@@ -35,12 +35,17 @@ export async function GET(request: NextRequest) {
   );
 }
 
-/** `POST /api/bff/products` → `201 ProductResponse`. */
+/**
+ * `POST /api/bff/products` → `201 ProductResponse`.
+ * Acepta `Idempotency-Key` opcional (validado, `[A-Za-z0-9_-]{8,128}`), lo
+ * reenvía a FastAPI y devuelve `Idempotent-Replayed` si la respuesta es una
+ * repetición.
+ */
 export async function POST(request: NextRequest) {
   return handleAuthenticated(
     request,
-    (client, { correlationId, body }) =>
-      unwrap(client.POST("/api/v1/products", { body }), correlationId),
-    { mutation: true, body: createProductSchema, successStatus: 201 },
+    (client, { correlationId, body, idempotencyKey }) =>
+      unwrap(client.POST("/api/v1/products", { body, ...idempotencyHeaders(idempotencyKey) }), correlationId),
+    { mutation: true, idempotent: true, body: createProductSchema, successStatus: 201 },
   );
 }

@@ -9,6 +9,7 @@ import {
   ProblemDetailError,
   problemTypeUri,
 } from "@/lib/api/problem";
+import { delay, rateLimitRetryDelayMs } from "@/lib/api/rate-limit";
 import { createBackendClient, unwrap, type BackendClient } from "@/lib/api/server-client";
 import {
   ACCESS_TOKEN_COOKIE,
@@ -83,29 +84,61 @@ export async function clearSessionCookies(): Promise<void> {
   store.set(CLIENT_BINDING_COOKIE, "", cookieOptions(0));
 }
 
+/** Opciones de {@link revokePreviousSession}. */
+export interface RevokeSessionOptions {
+  /**
+   * Ante `429 rate-limit-exceeded`, esperar `Retry-After` (hasta
+   * `RATE_LIMIT_RETRY_CAP_SECONDS` s) y reintentar una vez. Lo activa el
+   * logout; login/registro no lo usan para no retrasar el inicio de sesión.
+   */
+  retryOnRateLimit?: boolean;
+}
+
+function logoutRequest(refreshToken: string, correlationId: string): Promise<unknown> {
+  return unwrap(
+    createBackendClient({ correlationId }).POST("/api/v1/auth/logout", {
+      body: { refresh_token: refreshToken },
+    }),
+    correlationId,
+  );
+}
+
 /**
  * Revoca en FastAPI (best effort, nunca lanza) el refresh_token presente en la
  * cookie y lo descarta del mutex. Se usa en logout y antes de sobrescribir una
  * sesión previa en login/registro. `except` evita revocar el par recién emitido.
+ *
+ * @param correlationId - ID de la petición (se registra en el aviso, nunca tokens).
+ * @param except - Refresh token que no debe revocarse (par recién emitido).
+ * @param options - {@link RevokeSessionOptions}.
  */
 export async function revokePreviousSession(
   correlationId: string,
   except?: string,
+  options: RevokeSessionOptions = {},
 ): Promise<void> {
   const { refreshToken } = await getSessionTokens();
   if (!refreshToken || refreshToken === except) return;
   forgetRefreshToken(refreshToken);
   try {
-    await unwrap(
-      createBackendClient({ correlationId }).POST("/api/v1/auth/logout", {
-        body: { refresh_token: refreshToken },
-      }),
-      correlationId,
-    );
+    try {
+      await logoutRequest(refreshToken, correlationId);
+    } catch (error) {
+      const waitMs =
+        options.retryOnRateLimit && error instanceof ProblemDetailError && error.status === 429
+          ? rateLimitRetryDelayMs(error.retry_after)
+          : null;
+      if (waitMs === null) throw error;
+      await delay(waitMs);
+      await logoutRequest(refreshToken, correlationId);
+    }
   } catch (error) {
+    const problem = error instanceof ProblemDetailError ? error : undefined;
     console.warn("[bff] no se pudo revocar el refresh_token anterior", {
-      correlationId,
-      status: error instanceof ProblemDetailError ? error.status : undefined,
+      correlationId: problem?.correlation_id ?? correlationId,
+      status: problem?.status,
+      errorType: problem?.errorType,
+      retryAfter: problem?.retry_after,
     });
   }
 }

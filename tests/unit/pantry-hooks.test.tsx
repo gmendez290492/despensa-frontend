@@ -8,6 +8,8 @@ import { pantryKeys, type FoodBatchResponse, type PantryResponse } from "@/featu
 import {
   CONSUME_MUTATION_KEY,
   countPendingOutbox,
+  retryExpiredOutboxRecord,
+  sendOutboxRecord,
   shouldEnqueueAfterSend,
   useActivePantry,
   useBatches,
@@ -160,6 +162,72 @@ describe("Dexie OutboxStore (fake-indexeddb)", () => {
     await seedRow({ userId: OTHER });
     expect(await countPendingOutbox()).toBe(3);
     expect(await countPendingOutbox(USER.id)).toBe(2);
+  });
+});
+
+describe("retryExpiredOutboxRecord (reenvío consciente tras el TTL)", () => {
+  const EIGHT_DAYS_AGO = () => new Date(Date.now() - 8 * 24 * 3_600_000).toISOString();
+
+  it("drenado → conflict outbox-entry-expired → reenvío con clave nueva → se envía y se borra", async () => {
+    const oldKey = "cmid-expired-00000001";
+    const id = await seedRow({ clientMutationId: oldKey, createdAt: EIGHT_DAYS_AGO(), attempts: 2 });
+    const sentKeys: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        sentKeys.push(new Headers(init?.headers).get("Idempotency-Key")!);
+        return json({});
+      }),
+    );
+    const { drainOutbox, getDexieOutboxStore } = await import("@/lib/offline/outbox");
+    const store = await getDexieOutboxStore();
+
+    const first = await drainOutbox({ store, userId: USER.id, send: sendOutboxRecord });
+    expect(first).toMatchObject({ expired: 1, synced: 0 });
+    expect(sentKeys).toEqual([]);
+    const conflict = await offlineDb.outboxQueue.get(id);
+    expect(conflict?.status).toBe("conflict");
+    expect(conflict?.lastError?.type).toBe(problemTypeUri(PROBLEM_TYPES.outboxEntryExpired));
+
+    // Con el reloj real: la fila renovada no debe volver a caducar al drenar.
+    expect(await retryExpiredOutboxRecord(id)).toBe(true);
+    const renewed = await offlineDb.outboxQueue.get(id);
+    expect(renewed).toMatchObject({ status: "pending", attempts: 0, lastError: null, payload: conflict!.payload });
+    expect(renewed!.clientMutationId).not.toBe(oldKey);
+    expect(Date.now() - Date.parse(renewed!.createdAt)).toBeLessThan(60_000);
+    expect(renewed!.updatedAt).toBe(renewed!.createdAt);
+
+    const second = await drainOutbox({ store, userId: USER.id, send: sendOutboxRecord });
+    expect(second).toMatchObject({ synced: 1, expired: 0 });
+    expect(sentKeys).toEqual([renewed!.clientMutationId]);
+    expect(await offlineDb.outboxQueue.count()).toBe(0);
+  });
+
+  it("usa el reloj inyectado para createdAt", async () => {
+    const id = await seedRow({
+      status: "conflict",
+      createdAt: EIGHT_DAYS_AGO(),
+      lastError: { type: problemTypeUri(PROBLEM_TYPES.outboxEntryExpired), title: "x", status: 0 },
+    });
+    const now = new Date("2026-11-26T12:00:00.000Z");
+    expect(await retryExpiredOutboxRecord(id, () => now)).toBe(true);
+    expect((await offlineDb.outboxQueue.get(id))?.createdAt).toBe(now.toISOString());
+  });
+
+  it.each([
+    ["un conflicto de negocio", { status: "conflict" as const, lastError: { type: problemTypeUri(PROBLEM_TYPES.insufficientStock), title: "x", status: 400 } }],
+    ["una fila pending", { status: "pending" as const }],
+  ])("no toca %s (devuelve false)", async (_name, overrides) => {
+    const key = "cmid-untouched-0001";
+    const id = await seedRow({ clientMutationId: key, ...overrides });
+    expect(await retryExpiredOutboxRecord(id)).toBe(false);
+    const row = await offlineDb.outboxQueue.get(id);
+    expect(row?.clientMutationId).toBe(key);
+    expect(row?.status).toBe(overrides.status);
+  });
+
+  it("una fila inexistente devuelve false", async () => {
+    expect(await retryExpiredOutboxRecord(9_999)).toBe(false);
   });
 });
 

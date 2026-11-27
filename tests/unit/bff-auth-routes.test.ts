@@ -489,6 +489,124 @@ describe("429 con Retry-After (despensa-frontend#4, punto 2)", () => {
   });
 });
 
+describe("429 en refresh/logout (despensa-frontend#6)", () => {
+  const rateLimited = (retryAfter: string) => () =>
+    new Response(
+      JSON.stringify({
+        type: "https://despensa.api/errors/rate-limit-exceeded",
+        title: "Too Many Requests",
+        status: 429,
+        correlation_id: "cid-backend-429",
+      }),
+      {
+        status: 429,
+        headers: { "Content-Type": "application/problem+json", "Retry-After": retryAfter },
+      },
+    );
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("POST refresh con 429: responde 429 con retry_after y no toca las cookies", async () => {
+    jar.reset({ [ACCESS]: "at", [REFRESH]: "rt-429-post", [BINDING]: "b" });
+    routes["POST /api/v1/auth/refresh"] = rateLimited("12");
+    const response = await refreshPost(req("/api/bff/auth/refresh", { headers: sameOriginJson }));
+    expect(response.status).toBe(429);
+    expect(response.headers.get("retry-after")).toBe("12");
+    expect(await response.json()).toMatchObject({ status: 429, retry_after: 12 });
+    expect(jar.sets).toHaveLength(0);
+    expect(jar.values.get(REFRESH)).toBe("rt-429-post");
+  });
+
+  it("GET refresh con 429: 303 a /offline (con Retry-After) sin borrar la sesión", async () => {
+    jar.reset({ [REFRESH]: "rt-429-get" });
+    routes["POST /api/v1/auth/refresh"] = rateLimited("12");
+    const response = await refreshGet(req("/api/bff/auth/refresh?next=%2F", { method: "GET" }));
+    expect(response.status).toBe(303);
+    expect(new URL(response.headers.get("location")!).pathname).toBe("/offline");
+    expect(response.headers.get("retry-after")).toBe("12");
+    expect(jar.sets).toHaveLength(0);
+    expect(jar.values.get(REFRESH)).toBe("rt-429-get");
+  });
+
+  it("logout: 429 -> espera Retry-After, reintenta y responde 204 con cookies borradas", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    jar.reset({ [ACCESS]: "at", [REFRESH]: "rt-logout-429" });
+    const responses = [rateLimited("2"), () => new Response(null, { status: 204 })];
+    routes["POST /api/v1/auth/logout"] = () => responses.shift()!();
+
+    const pending = logout(req("/api/bff/auth/logout", { headers: sameOriginJson }));
+    await vi.advanceTimersByTimeAsync(1_999);
+    expect(calls("POST", "/api/v1/auth/logout")).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    const response = await pending;
+
+    expect(response.status).toBe(204);
+    expect(calls("POST", "/api/v1/auth/logout")).toHaveLength(2);
+    expect(console.warn).not.toHaveBeenCalled();
+    expect(jar.values.size).toBe(0);
+  });
+
+  it("logout: 429 persistente -> aviso con correlation_id (sin tokens) y 204 con cookies borradas", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    jar.reset({ [ACCESS]: "at-secret", [REFRESH]: "rt-secret-logout" });
+    routes["POST /api/v1/auth/logout"] = rateLimited("1");
+
+    const pending = logout(req("/api/bff/auth/logout", { headers: sameOriginJson }));
+    await vi.advanceTimersByTimeAsync(1_000);
+    const response = await pending;
+
+    expect(response.status).toBe(204);
+    expect(calls("POST", "/api/v1/auth/logout")).toHaveLength(2);
+    expect(jar.values.size).toBe(0);
+    expect(console.warn).toHaveBeenCalledTimes(1);
+    const [, context] = vi.mocked(console.warn).mock.calls[0]!;
+    expect(context).toMatchObject({ correlationId: "cid-backend-429", status: 429, retryAfter: 1 });
+    expect(JSON.stringify(vi.mocked(console.warn).mock.calls)).not.toMatch(/secret/);
+  });
+
+  it("logout: Retry-After mayor que el tope -> no espera ni reintenta, 204 igualmente", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    jar.reset({ [REFRESH]: "rt-logout-cap" });
+    routes["POST /api/v1/auth/logout"] = rateLimited("60");
+
+    const response = await logout(req("/api/bff/auth/logout", { headers: sameOriginJson }));
+
+    expect(response.status).toBe(204);
+    expect(calls("POST", "/api/v1/auth/logout")).toHaveLength(1);
+    expect(console.warn).toHaveBeenCalledTimes(1);
+    expect(jar.values.size).toBe(0);
+  });
+
+  it("GET logout (same-origin) también reintenta tras 429", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    jar.reset({ [REFRESH]: "rt-logout-get-429" });
+    const responses = [rateLimited("1"), () => new Response(null, { status: 204 })];
+    routes["POST /api/v1/auth/logout"] = () => responses.shift()!();
+
+    const pending = logoutGet(
+      req("/api/bff/auth/logout", { method: "GET", headers: { "Sec-Fetch-Site": "same-origin" } }),
+    );
+    await vi.advanceTimersByTimeAsync(1_000);
+    const response = await pending;
+
+    expect(response.status).toBe(303);
+    expect(calls("POST", "/api/v1/auth/logout")).toHaveLength(2);
+    expect(jar.values.size).toBe(0);
+  });
+
+  it("login no reintenta la revocación previa ante 429 (no retrasa el inicio de sesión)", async () => {
+    jar.reset({ [REFRESH]: "rt-previo-429" });
+    routes["POST /api/v1/auth/logout"] = rateLimited("1");
+    const response = await login(
+      req("/api/bff/auth/login", { headers: sameOriginJson, body: credentials }),
+    );
+    expect(response.status).toBe(200);
+    expect(calls("POST", "/api/v1/auth/logout")).toHaveLength(1);
+  });
+});
+
 describe("GET /api/bff/auth/logout (S5)", () => {
   it("same-origin: revoca, borra cookies y redirige 303 a /login", async () => {
     jar.reset({ [ACCESS]: "at", [REFRESH]: "rt-logout-get", [BINDING]: "b" });

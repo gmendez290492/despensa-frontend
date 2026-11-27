@@ -27,9 +27,11 @@ export const PROBLEM_TYPES = {
   unitNotFound: "unit-not-found",
   insufficientStock: "insufficient-stock",
   notificationNotFound: "notification-not-found",
-  // Idempotency-Key (despensa-backend#11): 409 transitorio / 422 conflicto
+  // Idempotency-Key (despensa-backend#14): 409 transitorio; 400/422 son bug de
+  // cliente (no se reintentan)
   idempotencyRequestInProgress: "idempotency-request-in-progress",
   idempotencyKeyReused: "idempotency-key-reused",
+  invalidIdempotencyKey: "invalid-idempotency-key",
   // FastAPI 422 (RequestValidationError) normalizado por el BFF
   validationError: "validation-error",
   // Generados por el BFF
@@ -39,6 +41,8 @@ export const PROBLEM_TYPES = {
   backendUnavailable: "backend-unavailable",
   networkError: "network-error",
   unknown: "unknown-error",
+  // Generados por la outbox del cliente (nunca viajan por la red)
+  outboxEntryExpired: "outbox-entry-expired",
 } as const;
 
 /** Unión de los slugs de {@link PROBLEM_TYPES}. */

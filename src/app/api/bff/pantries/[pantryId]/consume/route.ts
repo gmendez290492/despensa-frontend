@@ -11,11 +11,10 @@ import { consumeSchema } from "@/lib/pantry/schemas";
  * Errores de negocio (pasan tal cual como problem+json): `400
  * insufficient-stock`, `403 pantry-access-denied`, `404 product-not-found`.
  *
- * @remarks La deduplicación por `(user_id, Idempotency-Key)` está en la rama
- * `feature/pantry-idempotency-issue-11` de FastAPI: hasta que se fusione
- * despensa-backend#11, si la respuesta se pierde y la outbox reintenta, el
- * stock se descuenta dos veces (ver `docs/FRONTEND_CONTEXT.md`, hallazgos
- * abiertos).
+ * @remarks FastAPI deduplica por `(user_id, Idempotency-Key)` durante 168 h
+ * (despensa-backend#14): un reintento con la misma clave devuelve el
+ * resultado original sin volver a descontar. El BFF devuelve
+ * `Idempotent-Replayed` al navegador cuando FastAPI la envía.
  */
 export async function POST(
   request: NextRequest,

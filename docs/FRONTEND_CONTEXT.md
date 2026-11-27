@@ -6,7 +6,7 @@
 > backend en [`BACKEND_API_CONTEXT.md`](./BACKEND_API_CONTEXT.md).
 > Actualízalo al cerrar cada bloque de trabajo.
 
-**Última actualización:** 2026-11-26 · **Rama activa:** `feature/etapa-2-pantry` (desde `develop` `40b6f1d`, **sin commit todavía**) · PR #3 ya fusionado en `develop`
+**Última actualización:** 2026-11-27 · **Rama activa:** `feature/idempotency-ttl-refresh-429` (desde `develop` `65bb3b6`, sin commit todavía) · Etapa 2 fusionada en `develop` (PR #7)
 
 ---
 
@@ -25,13 +25,13 @@
 | **Etapa 2 · pantry** (Home Dashboard, Inventario, consumo FEFO, outbox offline) | 🟡 Implementada en `feature/etapa-2-pantry`, sin commit/PR | Ver §2b |
 | Pruebas de **seguridad** (Playwright) y **estrés** (k6) | ✅ Escritas y en verde contra FastAPI local | Ver §2b "Seguridad y estrés" |
 
-### Puertas de calidad (última ejecución: 2026-11-26, Etapa 2)
+### Puertas de calidad (última ejecución: 2026-11-27, issues #5 y #6)
 
 | Puerta | Resultado |
 |---|---|
 | `pnpm lint` | ✅ 0 errores |
 | `pnpm typecheck` | ✅ App + SW |
-| `pnpm test` | ✅ 484/484 (31 archivos) |
+| `pnpm test` | ✅ 536/536 (32 archivos) |
 | `pnpm build` | ✅ `public/sw.js` precachea 34 URLs (1.19 MB) |
 | Playwright E2E (`pnpm exec playwright test`, incluye `security/`) | ✅ 46/46 (Desktop + Mobile Chrome) con FastAPI local y rate limits relajados |
 | k6 (`pnpm test:stress`): smoke, consume_contention, refresh_storm, idempotent_replay | ✅ 4/4 (load/spike/soak escritos, no ejecutados) |
@@ -95,7 +95,15 @@ Pantallas Stitch: Home Dashboard `7888102e6f53468e9258286b534611ae` → `src/app
 - **Outbox (Dexie v2):** filas con `userId` (índice). `drainOutbox` exige `userId`, **borra** filas de otros usuarios o sin dueño (privacidad), drena FIFO bajo Web Lock, pausa en 401 (sin bucle), backoff + `Retry-After`. Se encola ante red, 5xx, 408, 429 y `idempotency-request-in-progress`, **reutilizando la misma Idempotency-Key** (`useActionMutationId`). Allowlist por `kind`, sin `//`, `redirect: "manual"`. Consumos encolados sin red no guardan `notes`.
 - **Logout:** si hay cambios sin sincronizar, `<dialog>` "Tienes N cambio(s) sin sincronizar" (Sincronizar ahora / Cancelar / Cerrar sesión igualmente).
 - **Backend:** idempotencia fusionada en `despensa-backend` PR #14 (issue [#11](https://github.com/gmendez290492/despensa-backend/issues/11) **sigue abierto**: el PR no lo cerró; `idempotent_replay` confirma 1 descuento por clave). Abierto [#13](https://github.com/gmendez290492/despensa-backend/issues/13) (validador de `purchase_date`, `ilike` sin escapar, búsqueda por código de barras, paginación). `docs/openapi.json` sincronizado con `develop` del backend.
-- **Pendiente conocido:** el BFF no reenvía `Idempotent-Replayed` (no hace falta hoy); los `@remarks` "hasta que se fusione despensa-backend#11" ya pueden simplificarse.
+- **Issue #5 (idempotencia, rama `feature/idempotency-ttl-refresh-429`):**
+  - TTL: `drainOutbox` no reenvía filas con más de `OUTBOX_MAX_REPLAY_AGE_MS` (6 d 20 h; FastAPI olvida las claves a las 168 h). Las pasa a `conflict` con `outbox-entry-expired`. El banner ofrece "Reenviar" (`retryExpiredOutboxRecord`, que usa una **clave nueva**: es una operación nueva y consciente).
+  - Errores de clave: `400 invalid-idempotency-key` y `422 idempotency-key-reused` nunca se reintentan y se registran con `console.warn` (`correlation_id`).
+  - BFF: reenvía `Idempotent-Replayed` (middleware `onResponse` en `handleAuthenticated` con `idempotent: true`) y acepta `Idempotency-Key` también en `pantries`, `join`, `locations` y `products`.
+  - Pendiente: los hooks de crear hogar/unirse/ubicación/producto siguen siendo solo online y sin clave.
+- **Issue #6 (rate limit de refresh/logout):**
+  - `bffFetch` ante un refresh con 429 espera `Retry-After` (tope `RATE_LIMIT_RETRY_CAP_SECONDS` = 5 s, `src/lib/api/rate-limit.ts`) y reintenta una vez. Si persiste lanza el 429, no el 401. Solo un 401/403 real del refresh significa sesión caducada.
+  - `GET /api/bff/auth/refresh` con 429 → 303 a `/offline` con `Retry-After`, conservando la sesión.
+  - El logout ante un 429 reintenta una vez; si vuelve a fallar, `console.warn` con `correlation_id`. Siempre 204/303 con las cookies borradas.
 
 ### Seguridad y estrés
 
@@ -153,9 +161,10 @@ Ya cumplía antes: `<form>` + `<label for>`, `type="email"`, toggle "mostrar con
 
 ## 6. Próximos pasos
 
-1. Commit de la Etapa 2 y PR `feature/etapa-2-pantry` → `develop` (solo a petición; merge con confirmación explícita).
-2. Cerrar despensa-backend#11 (validado por `idempotent_replay`) y simplificar los `@remarks` que lo citan.
-3. Ejecutar k6 `load`/`spike` (y `soak` antes de producción).
-4. Hallazgos QA bajos no abordados: completar `@param`/`@returns` en `features/pantry/api.ts` y `hooks.ts`.
-5. Hallazgos abiertos de §3 (doble contraseña, contraste del slider, `aria-disabled` en auth).
-6. Siguiente etapa del backend (escáner de códigos de barras con XState) cuando #13 aporte búsqueda por código.
+1. PR `feature/idempotency-ttl-refresh-429` → `develop` (cierra #5 y #6; merge con confirmación explícita).
+2. Llevar crear hogar/unirse/ubicación/producto a `useActionMutationId` (o a la outbox) ahora que el BFF acepta la clave.
+3. `/offline` muestra "Sin conexión" también ante un 429 del refresh; valorar un texto específico leído en cliente (`?motivo=`) sin romper el precache.
+4. Ejecutar k6 `load`/`spike` (y `soak` antes de producción).
+5. Hallazgos QA bajos no abordados: completar `@param`/`@returns` en `features/pantry/api.ts` y `hooks.ts`.
+6. Hallazgos abiertos de §3 (doble contraseña, contraste del slider, `aria-disabled` en auth).
+7. Siguiente etapa (escáner de códigos de barras con XState) cuando despensa-backend#13 aporte la búsqueda por código.

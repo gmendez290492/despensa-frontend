@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { NextRequest, NextResponse } from "next/server";
+import type { Middleware } from "openapi-fetch";
 import { z } from "zod";
 import { PROBLEM_TYPES, ProblemDetailError, problemTypeUri } from "@/lib/api/problem";
 import type { BackendClient } from "@/lib/api/server-client";
@@ -60,7 +61,11 @@ export interface HandleAuthenticatedOptions<
    * está parseado (un `Request` solo se puede leer una vez).
    */
   body?: S;
-  /** Lee y valida la cabecera `Idempotency-Key` (ver {@link readIdempotencyKey}). */
+  /**
+   * Lee y valida la cabecera `Idempotency-Key` (ver {@link readIdempotencyKey})
+   * y devuelve al navegador `Idempotent-Replayed` cuando FastAPI la envía
+   * (ver {@link IDEMPOTENT_REPLAYED_HEADER}), tanto en éxito como en error.
+   */
   idempotent?: boolean;
   /** Código HTTP de éxito (por defecto `200`; `204` responde sin cuerpo). */
   successStatus?: number;
@@ -77,7 +82,8 @@ type BodyOf<S> = S extends z.ZodType ? z.output<S> : undefined;
  *   ID y cuerpo validado); devuelve el cuerpo de la respuesta. Puede ejecutarse
  *   dos veces si FastAPI responde `401` y se rota la sesión.
  * @param options - {@link HandleAuthenticatedOptions}.
- * @returns JSON con el resultado o `application/problem+json` con el error.
+ * @returns JSON con el resultado o `application/problem+json` con el error
+ *   (con `Idempotent-Replayed` si `options.idempotent` y FastAPI la envió).
  *
  * @example
  * ```ts
@@ -110,6 +116,7 @@ export async function handleAuthenticated<
   options: HandleAuthenticatedOptions<S, P> = {},
 ): Promise<NextResponse> {
   const correlationId = getCorrelationId(request);
+  let replay: IdempotentReplayedCapture | null = null;
   try {
     // Orden: validaciones baratas primero; nada toca cookies ni FastAPI hasta
     // que la petición es sintácticamente válida.
@@ -123,6 +130,7 @@ export async function handleAuthenticated<
     const idempotencyKey = options.idempotent
       ? readIdempotencyKey(request, correlationId)
       : undefined;
+    replay = options.idempotent ? captureIdempotentReplayed() : null;
     const body = (
       options.body ? await parseJsonBody(request, options.body, correlationId) : undefined
     ) as BodyOf<S>;
@@ -132,16 +140,73 @@ export async function handleAuthenticated<
       body,
       idempotencyKey,
     };
-    const data = await authenticatedRequest((client) => call(client, context), {
-      correlationId,
-      allowRefresh: true,
-    });
+    const data = await authenticatedRequest(
+      (client) => {
+        if (replay) client.use(replay.middleware);
+        return call(client, context);
+      },
+      { correlationId, allowRefresh: true },
+    );
     const status = options.successStatus ?? 200;
-    if (status === 204) return emptyResponse(correlationId);
-    return jsonResponse(data, correlationId, { status });
+    const response = status === 204 ? emptyResponse(correlationId) : jsonResponse(data, correlationId, { status });
+    return replay ? replay.apply(response) : response;
   } catch (error) {
-    return handleError(error, correlationId);
+    const response = handleError(error, correlationId);
+    return replay ? replay.apply(response) : response;
   }
+}
+
+/**
+ * Cabecera con la que FastAPI marca una respuesta repetida para una
+ * `Idempotency-Key` ya procesada (`Idempotent-Replayed: true`).
+ */
+export const IDEMPOTENT_REPLAYED_HEADER = "idempotent-replayed";
+
+/** Captura de `Idempotent-Replayed` creada por {@link captureIdempotentReplayed}. */
+export interface IdempotentReplayedCapture {
+  /** Middleware de `openapi-fetch`: guarda la cabecera de la última respuesta de FastAPI. */
+  middleware: Middleware;
+  /** Valor capturado (`"true"`/`"false"`) o `null` si FastAPI no la envió. */
+  value(): string | null;
+  /**
+   * Copia la cabecera capturada a la respuesta del BFF (la muta y la devuelve).
+   * Sin valor capturado no añade nada.
+   */
+  apply<R extends Response>(response: R): R;
+}
+
+/**
+ * Captura `Idempotent-Replayed` de las respuestas de FastAPI para devolverla
+ * al navegador. Cuenta la **última** respuesta: si hubo `401` y reintento tras
+ * rotar tokens, manda la del reintento. Solo reenvía `true` o `false`
+ * (normalizado a minúsculas): nunca un valor arbitrario del backend.
+ *
+ * @returns {@link IdempotentReplayedCapture}.
+ *
+ * @example
+ * ```ts
+ * const replay = captureIdempotentReplayed();
+ * client.use(replay.middleware);
+ * await unwrap(client.POST(...), correlationId);
+ * return replay.apply(jsonResponse(data, correlationId));
+ * ```
+ */
+export function captureIdempotentReplayed(): IdempotentReplayedCapture {
+  let captured: string | null = null;
+  return {
+    middleware: {
+      onResponse({ response }) {
+        const raw = response.headers.get(IDEMPOTENT_REPLAYED_HEADER)?.trim().toLowerCase();
+        captured = raw === "true" || raw === "false" ? raw : null;
+        return undefined;
+      },
+    },
+    value: () => captured,
+    apply(response) {
+      if (captured !== null) response.headers.set("Idempotent-Replayed", captured);
+      return response;
+    },
+  };
 }
 
 function badRequest(correlationId: string, detail: string, loc: string[]): ProblemDetailError {

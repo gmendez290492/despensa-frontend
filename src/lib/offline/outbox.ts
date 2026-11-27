@@ -1,4 +1,10 @@
-import { isProblemDetailError, PROBLEM_TYPES, type ProblemDetail } from "@/lib/api/problem";
+import {
+  isProblemDetailError,
+  PROBLEM_TYPES,
+  problemSlug,
+  problemTypeUri,
+  type ProblemDetail,
+} from "@/lib/api/problem";
 import type { OutboxMutationRecord } from "@/lib/db/offline-db";
 
 /**
@@ -7,10 +13,13 @@ import type { OutboxMutationRecord } from "@/lib/db/offline-db";
  * reenvían en orden FIFO (`id` autoincremental) al recuperar conexión.
  *
  * - Cada fila lleva un `clientMutationId` que viaja como `Idempotency-Key`:
- *   un reintento tras perder la respuesta no debe duplicar el efecto. La rama
- *   `feature/pantry-idempotency-issue-11` de FastAPI ya deduplica por
- *   `(user_id, key)`; hasta que se fusione despensa-backend#11, un reintento
- *   puede duplicar el efecto (ver `docs/FRONTEND_CONTEXT.md`).
+ *   FastAPI deduplica por `(user_id, key)` (despensa-backend#14), así que un
+ *   reintento tras perder la respuesta no duplica el efecto.
+ * - Las claves caducan en FastAPI a las 168 h (`IDEMPOTENCY_KEY_TTL_HOURS`):
+ *   pasado ese plazo la misma clave **se ejecuta otra vez**. Por eso una fila
+ *   más antigua que {@link OUTBOX_MAX_REPLAY_AGE_MS} no se reenvía sola: pasa
+ *   a `conflict` (`outbox-entry-expired`) y el usuario decide si reenviarla
+ *   como operación nueva (`retryExpiredOutboxRecord` en `@/features/pantry/hooks`).
  * - Cada fila pertenece a un usuario (`userId`, el de `GET /api/bff/auth/me`
  *   al encolar). El drenado recibe el usuario **autenticado ahora** y:
  *   - solo envía sus filas (la cookie de sesión decide a quién se atribuye la
@@ -37,6 +46,94 @@ import type { OutboxMutationRecord } from "@/lib/db/offline-db";
 
 /** Nombre del Web Lock compartido por todas las pestañas del origen. */
 export const OUTBOX_LOCK_NAME = "despensa-outbox-drain";
+
+/**
+ * Antigüedad máxima (desde `createdAt`) con la que la outbox reenvía una fila
+ * automáticamente con su `Idempotency-Key`: 6 d 20 h, 4 h por debajo del TTL
+ * de 168 h de FastAPI (`IDEMPOTENCY_KEY_TTL_HOURS`) como margen para relojes
+ * desajustados y para el tiempo entre `createdAt` y el primer envío. Pasado
+ * este umbral la clave podría haber caducado en el servidor y el reenvío
+ * duplicaría el efecto, así que la fila pasa a `conflict`
+ * (`outbox-entry-expired`) y requiere confirmación del usuario.
+ */
+export const OUTBOX_MAX_REPLAY_AGE_MS = (6 * 24 + 20) * 60 * 60 * 1000;
+
+/**
+ * `true` si la fila es demasiado antigua para reenviarla con su clave (ver
+ * {@link OUTBOX_MAX_REPLAY_AGE_MS}). Un `createdAt` ilegible cuenta como
+ * caducado: IndexedDB no es fuente de confianza y lo seguro es preguntar.
+ *
+ * @param record - Fila de la outbox.
+ * @param nowMs - Instante actual (ms desde epoch).
+ * @returns `true` si no debe reenviarse automáticamente.
+ *
+ * @example
+ * ```ts
+ * if (isOutboxRecordExpired(row, Date.now())) markExpired(row);
+ * ```
+ */
+export function isOutboxRecordExpired(record: Pick<OutboxMutationRecord, "createdAt">, nowMs: number): boolean {
+  const createdMs = Date.parse(record.createdAt);
+  if (Number.isNaN(createdMs)) return true;
+  return nowMs - createdMs > OUTBOX_MAX_REPLAY_AGE_MS;
+}
+
+/**
+ * `ProblemDetail` local (no viene de la red, `status: 0`) con el que se marca
+ * una fila caducada. La UI lo reconoce por el slug `outbox-entry-expired`.
+ *
+ * @returns El problema RFC 7807 de la fila caducada.
+ */
+export function outboxEntryExpiredProblem(): ProblemDetail {
+  return {
+    type: problemTypeUri(PROBLEM_TYPES.outboxEntryExpired),
+    title: "Cambio caducado",
+    status: 0,
+    detail: "Este cambio lleva más de 7 días sin sincronizar; confirma si quieres reenviarlo.",
+  };
+}
+
+/**
+ * `true` si la fila está en conflicto por caducidad (y no por un error del
+ * servidor): solo esas se pueden reenviar como operación nueva.
+ *
+ * @param record - Fila de la outbox.
+ * @returns `true` si es un conflicto `outbox-entry-expired`.
+ */
+export function isExpiredOutboxConflict(record: Pick<OutboxMutationRecord, "status" | "lastError">): boolean {
+  return (
+    record.status === "conflict" &&
+    !!record.lastError &&
+    problemSlug(record.lastError.type) === PROBLEM_TYPES.outboxEntryExpired
+  );
+}
+
+/**
+ * Cambios que convierten una fila caducada en una **operación nueva**: nueva
+ * `Idempotency-Key`, `createdAt` actual, `pending` y contadores a cero. Se
+ * conserva el `id` (posición FIFO), el destino y el cuerpo.
+ *
+ * @param clientMutationId - Clave nueva (`crypto.randomUUID()`).
+ * @param now - Instante actual.
+ * @returns Cambios a aplicar sobre la fila.
+ */
+export function renewedOutboxChanges(clientMutationId: string, now: Date): Partial<OutboxMutationRecord> {
+  const timestamp = now.toISOString();
+  return {
+    clientMutationId,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    status: "pending",
+    attempts: 0,
+    lastError: null,
+  };
+}
+
+/** Slugs que indican un bug del cliente con `Idempotency-Key` (se registran con `console.warn`). */
+const CLIENT_IDEMPOTENCY_BUGS: ReadonlySet<string> = new Set([
+  PROBLEM_TYPES.invalidIdempotencyKey,
+  PROBLEM_TYPES.idempotencyKeyReused,
+]);
 
 /** Subconjunto de almacenamiento que usa la outbox (Dexie en la app, memoria en tests). */
 export interface OutboxStore {
@@ -152,7 +249,10 @@ export interface DrainResult {
    */
   ran: boolean;
   synced: number;
+  /** Filas que pasaron a `conflict` (incluidas las caducadas de `expired`). */
   conflicts: number;
+  /** Filas no reenviadas por superar {@link OUTBOX_MAX_REPLAY_AGE_MS} (ya contadas en `conflicts`). */
+  expired: number;
   /** `true` si se detuvo por un error transitorio (quedan filas `pending`). */
   stoppedEarly: boolean;
   /** Hogares con filas sincronizadas o en conflicto (para invalidar queries una vez). */
@@ -171,11 +271,13 @@ export interface DrainResult {
  *
  * - red / `backend-unavailable` / 5xx / `408` / `429`;
  * - `401`: la sesión no se pudo rotar (se reintenta tras volver a iniciar sesión);
- * - `409 idempotency-request-in-progress` (despensa-backend#11): FastAPI aún
- *   procesa esa misma clave (p. ej. el envío anterior perdió la respuesta).
+ * - `409 idempotency-request-in-progress`: FastAPI aún procesa esa misma
+ *   clave (p. ej. el envío anterior perdió la respuesta).
  *
- * `422 idempotency-key-reused` (misma clave, cuerpo distinto) y los demás 4xx
- * son conflictos. Una respuesta repetida (`Idempotent-Replayed: true`) se
+ * `422 idempotency-key-reused` (misma clave, cuerpo distinto), `400
+ * invalid-idempotency-key` (formato) y los demás 4xx son conflictos; los dos
+ * primeros son un bug del cliente y nunca se reintentan, sea cual sea el
+ * `status` con el que lleguen. Una respuesta repetida (`Idempotent-Replayed: true`) se
  * clasifica igual que la original: un `400 insufficient-stock` sigue siendo
  * conflicto y un 2xx, éxito.
  *
@@ -188,6 +290,7 @@ export interface DrainResult {
  */
 export function isTransientError(error: unknown): boolean {
   if (!isProblemDetailError(error)) return true;
+  if (CLIENT_IDEMPOTENCY_BUGS.has(error.errorType)) return false;
   if (
     error.is(PROBLEM_TYPES.networkError) ||
     error.is(PROBLEM_TYPES.backendUnavailable) ||
@@ -248,6 +351,7 @@ const NOT_RAN: Omit<DrainResult, "touchedPantryIds"> = {
   ran: false,
   synced: 0,
   conflicts: 0,
+  expired: 0,
   stoppedEarly: false,
   unauthorized: false,
   purgedForeign: 0,
@@ -258,6 +362,7 @@ async function runDrain(options: DrainOptions, run: DrainRun): Promise<DrainResu
   const result: Omit<DrainResult, "ran" | "touchedPantryIds"> = {
     synced: 0,
     conflicts: 0,
+    expired: 0,
     stoppedEarly: false,
     unauthorized: false,
     purgedForeign: 0,
@@ -287,6 +392,25 @@ async function runDrain(options: DrainOptions, run: DrainRun): Promise<DrainResu
         if (record.id === undefined) continue;
         // Defensa en profundidad: una fila ajena encolada tras la purga no se envía.
         if (record.userId !== userId) continue;
+
+        // TTL de la clave (168 h en FastAPI): una fila demasiado antigua (también
+        // una huérfana `syncing` devuelta arriba a `pending`) no se reenvía sola.
+        // `claim` es atómico y solo actúa si sigue `pending`.
+        if (isOutboxRecordExpired(record, now().getTime())) {
+          const problem = outboxEntryExpiredProblem();
+          const marked = await store.claim(record.id, {
+            status: "conflict",
+            lastError: problem,
+            updatedAt: now().toISOString(),
+          });
+          if (!marked) continue;
+          result.conflicts += 1;
+          result.expired += 1;
+          if (record.pantryId) touched.add(record.pantryId);
+          onConflict?.({ ...record, status: "conflict", lastError: problem }, problem);
+          continue;
+        }
+
         const attempts = (record.attempts ?? 0) + 1;
         const claimed = await store.claim(record.id, {
           status: "syncing",
@@ -313,6 +437,17 @@ async function runDrain(options: DrainOptions, run: DrainRun): Promise<DrainResu
             if (problem.status === 401) result.unauthorized = true;
             if (problem.retry_after !== undefined) result.retryAfterSeconds = problem.retry_after;
             break;
+          }
+          if (CLIENT_IDEMPOTENCY_BUGS.has(problemSlug(problem.type))) {
+            // Bug del cliente (clave mal formada o reutilizada con otro cuerpo): se
+            // registra para depurarlo con el correlation ID; sin `label` ni cuerpo.
+            console.warn("[outbox] FastAPI rechazó la Idempotency-Key", {
+              error_type: problemSlug(problem.type),
+              status: problem.status,
+              correlation_id: problem.correlation_id,
+              kind: record.kind,
+              outbox_id: record.id,
+            });
           }
           await store.update(record.id, {
             status: "conflict",

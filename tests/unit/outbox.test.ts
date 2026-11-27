@@ -4,7 +4,12 @@ import type { OutboxMutationRecord } from "@/lib/db/offline-db";
 import {
   drainOutbox,
   enqueueMutation,
+  isExpiredOutboxConflict,
+  isOutboxRecordExpired,
   isTransientError,
+  OUTBOX_MAX_REPLAY_AGE_MS,
+  outboxEntryExpiredProblem,
+  renewedOutboxChanges,
   type OutboxSender,
   type OutboxStore,
 } from "@/lib/offline/outbox";
@@ -414,6 +419,9 @@ describe("isTransientError", () => {
     [problem(404, PROBLEM_TYPES.productNotFound), false],
     [problem(409, "otro-conflicto"), false],
     [problem(422, PROBLEM_TYPES.idempotencyKeyReused), false],
+    [problem(400, PROBLEM_TYPES.invalidIdempotencyKey), false],
+    // Bug de cliente: no se reintenta aunque llegue con un status "transitorio".
+    [problem(503, PROBLEM_TYPES.invalidIdempotencyKey), false],
     [new Error("boom"), true],
   ])("%o → %s", (error, expected) => {
     expect(isTransientError(error)).toBe(expected);
@@ -556,5 +564,223 @@ describe("sendOutboxRecord", () => {
   it("normalizeOutboxEndpoint rechaza segmentos vacíos (//) en el pathname", () => {
     expect(normalizeOutboxEndpoint("/api/bff//auth/logout")).toBeNull();
     expect(normalizeOutboxEndpoint("/api/bff/pantries//x")).toBeNull();
+  });
+});
+
+describe("TTL de Idempotency-Key (168 h en FastAPI)", () => {
+  const NOW = new Date("2026-12-10T12:00:00.000Z");
+  const now = () => NOW;
+  const ago = (ms: number) => () => new Date(NOW.getTime() - ms);
+  const HOUR = 3_600_000;
+
+  const enqueueAt = (store: OutboxStore, clientMutationId: string, createdAgoMs: number) =>
+    enqueueMutation(
+      store,
+      {
+        clientMutationId,
+        userId: USER,
+        endpoint: `/api/bff/pantries/${PANTRY}/consume`,
+        payload: { product_id: "p", quantity: "1" },
+        pantryId: PANTRY,
+        kind: "consume",
+        label: "Leche · 1 l",
+      },
+      ago(createdAgoMs),
+    );
+
+  it("OUTBOX_MAX_REPLAY_AGE_MS es 6 d 20 h (4 h de margen bajo las 168 h)", () => {
+    expect(OUTBOX_MAX_REPLAY_AGE_MS).toBe((6 * 24 + 20) * HOUR);
+    expect(168 * HOUR - OUTBOX_MAX_REPLAY_AGE_MS).toBe(4 * HOUR);
+  });
+
+  it("isOutboxRecordExpired: umbral exclusivo y createdAt ilegible cuenta como caducado", () => {
+    const at = (ms: number) => ({ createdAt: new Date(NOW.getTime() - ms).toISOString() });
+    expect(isOutboxRecordExpired(at(OUTBOX_MAX_REPLAY_AGE_MS), NOW.getTime())).toBe(false);
+    expect(isOutboxRecordExpired(at(OUTBOX_MAX_REPLAY_AGE_MS + 1), NOW.getTime())).toBe(true);
+    expect(isOutboxRecordExpired({ createdAt: "no-es-fecha" }, NOW.getTime())).toBe(true);
+  });
+
+  it("no reenvía una fila caducada: pasa a conflict outbox-entry-expired y sigue con las demás", async () => {
+    const { store, rows } = createMemoryStore();
+    await enqueueAt(store, "cmid-old", 7 * 24 * HOUR);
+    await enqueueAt(store, "cmid-fresh", OUTBOX_MAX_REPLAY_AGE_MS - 60_000);
+    const { sent, send } = recorder();
+    const onConflict = vi.fn();
+
+    const result = await drainOutbox({ store, userId: USER, send, now, onConflict });
+
+    expect(sent).toEqual(["cmid-fresh"]);
+    expect(result).toMatchObject({
+      synced: 1,
+      conflicts: 1,
+      expired: 1,
+      stoppedEarly: false,
+      touchedPantryIds: [PANTRY],
+    });
+    expect(rows.size).toBe(1);
+    const row = rows.get(1)!;
+    expect(row).toMatchObject({ clientMutationId: "cmid-old", status: "conflict", attempts: 0 });
+    expect(row.lastError).toEqual(outboxEntryExpiredProblem());
+    expect(row.lastError).toMatchObject({
+      type: problemTypeUri(PROBLEM_TYPES.outboxEntryExpired),
+      status: 0,
+      detail: expect.stringMatching(/más de 7 días sin sincronizar; confirma si quieres reenviarlo/),
+    });
+    expect(isExpiredOutboxConflict(row)).toBe(true);
+    expect(onConflict).toHaveBeenCalledOnce();
+
+    // Un drenado posterior tampoco la reenvía: sigue esperando al usuario.
+    await drainOutbox({ store, userId: USER, send, now });
+    expect(sent).toEqual(["cmid-fresh"]);
+  });
+
+  it("una fila huérfana syncing antigua tampoco se reenvía", async () => {
+    const { store, rows } = createMemoryStore();
+    await enqueueAt(store, "cmid-orphan", 8 * 24 * HOUR);
+    await store.update(1, { status: "syncing", attempts: 3 });
+    const { sent, send } = recorder();
+
+    const result = await drainOutbox({ store, userId: USER, send, now });
+
+    expect(sent).toEqual([]);
+    expect(result).toMatchObject({ expired: 1, conflicts: 1 });
+    expect(rows.get(1)).toMatchObject({ status: "conflict", attempts: 3 });
+    expect(isExpiredOutboxConflict(rows.get(1)!)).toBe(true);
+  });
+
+  it("isExpiredOutboxConflict solo reconoce conflictos por caducidad", () => {
+    expect(isExpiredOutboxConflict({ status: "conflict", lastError: outboxEntryExpiredProblem() })).toBe(true);
+    expect(isExpiredOutboxConflict({ status: "pending", lastError: outboxEntryExpiredProblem() })).toBe(false);
+    expect(
+      isExpiredOutboxConflict({
+        status: "conflict",
+        lastError: { type: problemTypeUri(PROBLEM_TYPES.insufficientStock), title: "x", status: 400 },
+      }),
+    ).toBe(false);
+    expect(isExpiredOutboxConflict({ status: "conflict", lastError: null })).toBe(false);
+  });
+
+  it("renewedOutboxChanges: clave nueva, createdAt actual, pending y contadores a cero", () => {
+    expect(renewedOutboxChanges("cmid-new", NOW)).toEqual({
+      clientMutationId: "cmid-new",
+      createdAt: NOW.toISOString(),
+      updatedAt: NOW.toISOString(),
+      status: "pending",
+      attempts: 0,
+      lastError: null,
+    });
+  });
+});
+
+describe("errores de Idempotency-Key del cliente (bug, no se reintentan)", () => {
+  it.each([
+    [400, PROBLEM_TYPES.invalidIdempotencyKey],
+    [422, PROBLEM_TYPES.idempotencyKeyReused],
+  ])("%i %s → conflict sin reintento y console.warn con correlation_id", async (status, slug) => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { store, rows } = createMemoryStore();
+    await enqueueConsume(store, 1);
+    await enqueueConsume(store, 2);
+    const sent: string[] = [];
+    const send: OutboxSender = async (record) => {
+      if (record.clientMutationId === "cmid-1") throw problem(status, slug, { correlation_id: "corr-idem-1" });
+      sent.push(record.clientMutationId);
+    };
+
+    const result = await drainOutbox({ store, userId: USER, send });
+
+    expect(result).toMatchObject({ synced: 1, conflicts: 1, stoppedEarly: false });
+    expect(sent).toEqual(["cmid-2"]);
+    expect(rows.get(1)).toMatchObject({ status: "conflict", attempts: 1 });
+    expect(warn).toHaveBeenCalledOnce();
+    const [message, context] = warn.mock.calls[0]!;
+    expect(message).toMatch(/Idempotency-Key/);
+    expect(context).toMatchObject({ error_type: slug, status, correlation_id: "corr-idem-1", kind: "consume" });
+    // No se registran datos del usuario (label/cuerpo).
+    expect(JSON.stringify(context)).not.toMatch(/Leche/);
+
+    // Un segundo drenado no la reenvía.
+    await drainOutbox({ store, userId: USER, send });
+    expect(sent).toEqual(["cmid-2"]);
+  });
+
+  it("un conflicto de negocio (insufficient-stock) no emite console.warn", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { store } = createMemoryStore();
+    await enqueueConsume(store, 1);
+    await drainOutbox({
+      store,
+      userId: USER,
+      send: async () => {
+        throw problem(400, PROBLEM_TYPES.insufficientStock);
+      },
+    });
+    expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+describe("respuesta perdida: FastAPI aplica la operación pero el cliente no recibe la respuesta", () => {
+  /**
+   * FastAPI idempotente en memoria: deduplica por `Idempotency-Key`, cuenta
+   * efectos por clave y responde `Idempotent-Replayed: true` al repetir. La
+   * primera respuesta se "pierde" (error de red tras aplicar el efecto).
+   */
+  function createIdempotentServer() {
+    const results = new Map<string, { body: string; response: unknown }>();
+    const effects = new Map<string, number>();
+    let stock = 10;
+    let dropNextResponse = true;
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const key = new Headers(init?.headers).get("Idempotency-Key")!;
+      const body = String(init?.body);
+      const previous = results.get(key);
+      if (previous) {
+        if (previous.body !== body) {
+          return new Response(
+            JSON.stringify({ type: problemTypeUri(PROBLEM_TYPES.idempotencyKeyReused), title: "x", status: 422 }),
+            { status: 422, headers: { "Content-Type": "application/problem+json" } },
+          );
+        }
+        return new Response(JSON.stringify(previous.response), {
+          status: 200,
+          headers: { "Content-Type": "application/json", "Idempotent-Replayed": "true" },
+        });
+      }
+      stock -= Number((JSON.parse(body) as { quantity: string }).quantity);
+      effects.set(key, (effects.get(key) ?? 0) + 1);
+      const response = { remaining_stock: String(stock) };
+      results.set(key, { body, response });
+      if (dropNextResponse) {
+        dropNextResponse = false;
+        throw new TypeError("Failed to fetch");
+      }
+      return new Response(JSON.stringify(response), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    return { fetchMock, effects, stock: () => stock };
+  }
+
+  it("el reenvío con la misma clave devuelve 200 replayed y la fila se borra sin duplicar el efecto", async () => {
+    const server = createIdempotentServer();
+    vi.stubGlobal("fetch", server.fetchMock);
+    const { store, rows } = createMemoryStore();
+    await enqueueConsume(store, 3);
+
+    const first = await drainOutbox({ store, userId: USER, send: sendOutboxRecord });
+    expect(first).toMatchObject({ synced: 0, conflicts: 0, stoppedEarly: true });
+    expect(rows.get(1)).toMatchObject({ clientMutationId: "cmid-3", status: "pending", attempts: 1 });
+    expect(server.effects.get("cmid-3")).toBe(1);
+
+    const second = await drainOutbox({ store, userId: USER, send: sendOutboxRecord });
+    expect(second).toMatchObject({ synced: 1, conflicts: 0, stoppedEarly: false });
+    expect(rows.size).toBe(0);
+
+    expect(server.fetchMock).toHaveBeenCalledTimes(2);
+    const replayed = (await server.fetchMock.mock.results[1]!.value) as Response;
+    expect(replayed.headers.get("Idempotent-Replayed")).toBe("true");
+    for (const [, init] of server.fetchMock.mock.calls) {
+      expect(new Headers(init?.headers).get("Idempotency-Key")).toBe("cmid-3");
+    }
+    expect(server.effects.get("cmid-3")).toBe(1);
+    expect(server.stock()).toBe(7);
   });
 });

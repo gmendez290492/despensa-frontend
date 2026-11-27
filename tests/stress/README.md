@@ -18,7 +18,7 @@ $env:SCENARIO="smoke"; pnpm test:stress                                         
 | `soak` | 20 VUs · 30 min (`SOAK_DURATION`) | Fugas o degradación del proceso Next y del mutex | Los mismos que `load` |
 | `consume_contention` | 200 consumos de 1 pza en paralelo contra un stock de 100 | Sin sobreventa: exactamente 100 OK y 100 `insufficient-stock`, stock final 0, ningún 5xx | `consume_ok==100`, `consume_unexpected==0` |
 | `refresh_storm` | 100 VUs con el **mismo** refresh token y sin access token | El mutex del BFF hace una sola rotación y FastAPI no revoca la familia | `refresh_ok > 99 %`, la sesión sigue viva |
-| `idempotent_replay` | 20 claves × 5 reenvíos | Que una `Idempotency-Key` repetida descuenta **una** sola vez | `replay_extra_deductions==0`. **Falla hasta que se cierre [despensa-backend#11](https://github.com/gmendez290492/despensa-backend/issues/11)** |
+| `idempotent_replay` | 20 claves × 5 reenvíos | Que una `Idempotency-Key` repetida descuenta **una** sola vez | `replay_extra_deductions==0`. Pasa desde despensa-backend#14 (cierra [#11](https://github.com/gmendez290492/despensa-backend/issues/11)) |
 
 - El `setup()` registra un usuario por VU y los une al mismo hogar con el `invite_code`.
 - FastAPI debe arrancar con los rate limits relajados (`docs/FRONTEND_CONTEXT.md` §5).
