@@ -29,8 +29,12 @@
 **Issues abiertos relevantes:**
 - Backend:
   - despensa-backend#13: validador de `purchase_date`, `ilike` sin escapar, búsqueda por código de barras, paginación. Bloquea el escáner.
-  - despensa-backend#16: la API satura a unos 60–100 req/s, con p95 de 1–2,7 s en lecturas. Diagnosticado como cuello de botella del backend: FastAPI directo es más lento que a través del BFF.
-  - despensa-backend#17: el OpenAPI de `/pantries/join` no documenta `409 already-pantry-member`.
+  - despensa-backend#16: la API satura a unos 60–100 req/s, con p95 de 1–2,7 s en lecturas.
+    - **PR backend #19** (CI verde, sin fusionar): el límite era la CPU por proceso. Optimizado: 1 worker pasa de 121 a 163 req/s; 4 workers, de 347 a 418 req/s.
+    - Añade `docker-compose.prod-like.yml` (imagen de producción, `WEB_CONCURRENCY=4`).
+    - Al fusionarse, **repetir k6 `load`/`spike` en modo prod-like**.
+    - El endpoint agregado del dashboard está pendiente de decisión del usuario.
+  - despensa-backend#17: **PR backend #18** (CI verde, sin fusionar). El OpenAPI documenta cada `type` problem+json como enum por status (el 409 de `/join` incluye `already-pantry-member`). Al fusionarse: copiar `docs/openapi.json` y ejecutar `pnpm generate:api` (los `type` pasan a ser uniones literales y pueden tipar `PROBLEM_TYPES`).
 - Frontend: ninguno abierto al cierre.
 
 **Pendiente de esta sesión:** las pruebas manuales en Chrome (extensión Claude in Chrome) no se pudieron ejecutar porque las herramientas del navegador no estaban activas. Se retoma con `claude --chrome --resume` (Claude Code) o con el navegador de Antigravity. Recorrido sugerido:
@@ -201,7 +205,7 @@ Ya cumplía antes: `<form>` + `<label for>`, `type="email"`, toggle "mostrar con
 
 1. PR `feature/pantry-followups` → `develop` (merge con confirmación explícita).
 2. Pruebas manuales en Chrome (recorrido en §0) y registrar los hallazgos.
-3. Cuando el backend resuelva despensa-backend#16, repetir k6 `load`/`spike`. Valorar un endpoint agregado del dashboard (4 llamadas → 1).
+3. Cuando se fusionen los PR backend #18 y #19: regenerar `schema.d.ts` y repetir k6 `load`/`spike` contra `docker-compose.prod-like.yml`. El usuario decide si se hace un endpoint agregado del dashboard (4 llamadas → 1).
 4. Siguiente etapa: escáner de códigos de barras (XState v5 + `BarcodeDetector` con fallback), que depende de la búsqueda por código de despensa-backend#13. Pantalla en Stitch con `implement-stitch-screen`.
 5. Pantallas que ya tienen hooks y aún no tienen UI: alta de lote y de producto (`useCreateProductMutation`, `useCreateLocationMutation`).
 6. Detalle menor: `/offline?motivo=limite` mantiene el `<title>` y el pie genéricos.
