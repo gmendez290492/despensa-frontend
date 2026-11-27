@@ -6,7 +6,7 @@
 > backend en [`BACKEND_API_CONTEXT.md`](./BACKEND_API_CONTEXT.md).
 > Actualízalo al cerrar cada bloque de trabajo.
 
-**Última actualización:** 2026-11-27 · **Rama activa:** `feature/pantry-followups` (desde `develop` `8cfac90`) · En `develop`: Etapa 2 (PR #7) e issues #5/#6 (PR #8)
+**Última actualización:** 2026-11-27 (cierre de sesión) · **Rama activa:** `feature/pantry-followups` (desde `develop` `8cfac90`) · En `develop`: Etapa 2 (PR #7) e issues #5/#6 (PR #8)
 
 ---
 
@@ -34,7 +34,7 @@
     - `load` 50 VUs, p95 del panel: 4,8 s (dev, 1 proceso) → 112 ms (4 llamadas) → **32 ms** (dashboard).
     - `spike` 200 VUs, p95: 9,7 s → 3,65 s → **50 ms**, 0 % de fallos, 64 paneles/s.
   - despensa-backend#17: resuelto en PR #18 (enum de `type` problem+json por status). `openapi.json` sincronizado; todos los slugs existen en `PROBLEM_TYPES`.
-  - despensa-backend#21 → **PR backend #22** (CI verde, pendiente de merge): 401 documentado en todas las rutas con Bearer y el 422 pasa a ser `application/problem+json` también en el comportamiento (`validation-error`, `errors: [{loc,msg,type}]`, sin `input`). Compatible: `toFieldErrors` ya lo cubre y ningún tipo importa `HTTPValidationError`. Tras el merge: sincronizar `openapi.json`, `pnpm generate:api` y, cuando no queden backends antiguos, quitar la rama `Array.isArray(body.detail)` de `src/lib/api/problem.ts`.
+  - despensa-backend#21: resuelto en PR #22 (`d7c0fae`). Hay 401 documentado en todas las rutas con Bearer y el 422 es `application/problem+json` (`validation-error`, `errors: [{loc,msg,type}]`) también en el comportamiento. `openapi.json` ya está sincronizado y `HTTPValidationError` desapareció del schema. Cuando no queden backends antiguos, se puede quitar la rama `Array.isArray(body.detail)` de `src/lib/api/problem.ts`.
 - Frontend: #10 (dashboard agregado) implementado en `feature/pantry-followups` (PR #9). Se cierra a mano al fusionar en `develop`.
 
 **Pendiente de esta sesión:** las pruebas manuales en Chrome (extensión Claude in Chrome) no se pudieron ejecutar porque las herramientas del navegador no estaban activas. Se retoma con `claude --chrome --resume` (Claude Code) o con el navegador de Antigravity. Recorrido sugerido:
@@ -205,7 +205,15 @@ Ya cumplía antes: `<form>` + `<label for>`, `type="email"`, toggle "mostrar con
 
 1. PR `feature/pantry-followups` → `develop` (merge con confirmación explícita).
 2. Pruebas manuales en Chrome (recorrido en §0) y registrar los hallazgos.
-3. Cuando se fusione el PR backend #22: sincronizar `openapi.json`, regenerar `schema.d.ts` y pasar las puertas.
+3. **Etapa 3a: alta manual de productos y lotes** (siguiente bloque; no depende del backend). Pantallas de Stitch:
+   - Hub "Flujo 1: Hub de Entrada Agregar Producto" `f8feeea9718f470eac8844b59e70792f`.
+   - "Registro de Producto Fresco" `eeb2144fbae948a2a2d0254c34508679`.
+   - "Flujo 3: Configuración de Caducidad y Alertas" `8e7ddf95224042a793be39386f63bf17`.
+   - "Producto Guardado con Éxito" `76c02babcfd4458588d46cf8c992275f`.
+   - Hooks ya disponibles: `useCreateProductMutation` y `useCreateLocationMutation`, ambos online con `Idempotency-Key`.
+   - Falta `useCreateBatchMutation`, a hacer con la outbox: el `kind` `create-batch` ya está en `OUTBOX_ENDPOINT_RULES`. Hay que resolver el ID temporal si el producto se crea sin conexión (skill `offline-outbox-mutation`).
+   - Reparto: UI con `stitch-ui-builder` (skill `implement-stitch-screen`), mutación offline con `pwa-offline-specialist`, auditoría con `qa-frontend-auditor` y `backend-integration-suites`.
+   - Las pantallas de escáner ("Barcode & Shelf Scanner" `750771d22b144ef68a46083fc9dd6a22`, "Barcode Item Confirmation" `ac5c823f13294ee8b29d1b8b9bba6f6b`, "Ingreso Manual de Código" `a18187a171e144a1884889089b156e40`, "Código Desconocido / Nuevo Producto" `452d98a90d2645cd94681e1a7e759721`, "Escaneo Continuo por Lote" `0a9db6d0f6244850a673b7be975cb235` y los Flujos 2 y 4) esperan a la búsqueda por código de despensa-backend#13.
 4. Siguiente etapa: escáner de códigos de barras (XState v5 + `BarcodeDetector` con fallback), que depende de la búsqueda por código de despensa-backend#13. Pantalla en Stitch con `implement-stitch-screen`.
 5. Pantallas que ya tienen hooks y aún no tienen UI: alta de lote y de producto (`useCreateProductMutation`, `useCreateLocationMutation`).
 6. Detalle menor: `/offline?motivo=limite` mantiene el `<title>` y el pie genéricos.
