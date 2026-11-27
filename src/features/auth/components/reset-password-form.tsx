@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { PasswordField } from "@/components/ui/password-field";
 import { PasswordStrengthMeter } from "@/components/ui/password-strength-meter";
 import { useIsOffline } from "@/components/connection-status-pill";
+import { blockSubmitWhileOffline } from "@/features/auth/offline-submit";
 import { useResetPasswordMutation } from "@/features/auth/client";
 import { AUTH_ERROR_MESSAGES, mapAuthError, type AuthBanner } from "@/features/auth/form-errors";
 import { PROBLEM_TYPES } from "@/lib/api/problem";
@@ -26,7 +27,7 @@ import {
 const RESET_FIELDS = ["new_password"] as const;
 const OFFLINE_HINT_ID = "reset-offline-hint";
 const STRENGTH_ID = "reset-password-strength";
-const labelClass = "text-[12.5px] tracking-wider uppercase";
+const labelClass = "text-[0.78125rem] tracking-wider uppercase";
 
 const linkClass =
   "inline-flex min-h-11 items-center font-semibold text-primary-container underline underline-offset-4 hover:text-foreground focus-visible:rounded-[4px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-container";
@@ -69,10 +70,12 @@ function InvalidLink({ message }: { message: string }) {
  *   navegador sugiera una fuerte (la guía desaconseja pedirla dos veces).
  * - `204`: FastAPI revoca todas las sesiones; se limpia el estado local y se
  *   va a `/login?reset=1`. `400 invalid-reset-token`: se ofrece pedir otro enlace.
+ * - Sin conexión el botón queda `aria-disabled` (enfocable, lee la pista
+ *   `aria-describedby`) y `blockSubmitWhileOffline` bloquea el envío.
  *
  * @returns El formulario o el aviso de enlace inválido.
  *
- * @see https://developer.chrome.com/docs/modern-web-guidance — guías `autofill-sign-up-form` y `security`.
+ * @see https://developer.chrome.com/docs/modern-web-guidance — guías `autofill-sign-up-form`, `security` y `custom-button-actions`.
  */
 export function ResetPasswordForm() {
   const router = useRouter();
@@ -149,7 +152,7 @@ export function ResetPasswordForm() {
         </Alert>
       ) : null}
 
-      <form onSubmit={onSubmit} noValidate className="space-y-4" aria-label="Restablecer contraseña">
+      <form onSubmit={blockSubmitWhileOffline(offline, onSubmit)} noValidate className="space-y-4" aria-label="Restablecer contraseña">
         <input type="hidden" {...register("token")} />
         <PasswordField
           id="reset-new-password"
@@ -174,7 +177,7 @@ export function ResetPasswordForm() {
             fullWidth
             loading={submitting}
             loadingText="Guardando contraseña…"
-            disabled={offline}
+            aria-disabled={offline || undefined}
             aria-describedby={offline ? OFFLINE_HINT_ID : undefined}
           >
             <span>Guardar contraseña nueva</span>

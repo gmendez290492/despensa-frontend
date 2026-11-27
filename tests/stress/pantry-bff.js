@@ -36,6 +36,8 @@ import {
 } from "./lib.js";
 
 const SCENARIO = __ENV.SCENARIO || "smoke";
+// "split" (4 GET en paralelo, como antes) | "aggregate" (1 GET al endpoint del dashboard, despensa-backend#20).
+const DASHBOARD_MODE = __ENV.DASHBOARD_MODE || "split";
 
 const consumeOk = new Counter("consume_ok");
 const consumeInsufficient = new Counter("consume_insufficient_stock");
@@ -46,8 +48,12 @@ const dashboardLatency = new Trend("dashboard_roundtrip", true);
 
 const readThresholds = {
   http_req_failed: ["rate<0.01"],
-  "http_req_duration{name:batches}": ["p(95)<800", "p(99)<1500"],
-  "http_req_duration{name:pantries}": ["p(95)<500"],
+  ...(DASHBOARD_MODE === "aggregate"
+    ? { "http_req_duration{name:dashboard}": ["p(95)<800", "p(99)<1500"] }
+    : {
+        "http_req_duration{name:batches}": ["p(95)<800", "p(99)<1500"],
+        "http_req_duration{name:pantries}": ["p(95)<500"],
+      }),
   dashboard_roundtrip: ["p(95)<1500"],
   checks: ["rate>0.99"],
 };
@@ -114,7 +120,7 @@ const THRESHOLDS = {
   spike: {
     // En un pico se tolera más latencia, pero no errores de servidor.
     http_req_failed: ["rate<0.05"],
-    "http_req_duration{name:batches}": ["p(95)<3000"],
+    [DASHBOARD_MODE === "aggregate" ? "http_req_duration{name:dashboard}" : "http_req_duration{name:batches}"]: ["p(95)<3000"],
     checks: ["rate>0.95"],
   },
   soak: readThresholds,
@@ -191,12 +197,14 @@ export function dashboard(data) {
   if (__ITER === 0) useCookies(sessionFor(data));
   const { pantryId } = data.seed;
   const started = Date.now();
-  const responses = http.batch([
+  const responses = DASHBOARD_MODE === "aggregate"
+    ? [http.get(`${BASE_URL}/api/bff/pantries/${pantryId}/dashboard`, { tags: { name: "dashboard" } })]
+    : http.batch([
     ["GET", `${BASE_URL}/api/bff/pantries`, null, { tags: { name: "pantries" } }],
     ["GET", `${BASE_URL}/api/bff/pantries/${pantryId}/batches`, null, { tags: { name: "batches" } }],
     ["GET", `${BASE_URL}/api/bff/pantries/${pantryId}/locations`, null, { tags: { name: "locations" } }],
     ["GET", `${BASE_URL}/api/bff/notifications?unread_only=true&limit=1`, null, { tags: { name: "notifications" } }],
-  ]);
+      ]);
   dashboardLatency.add(Date.now() - started);
   for (const res of responses) {
     check(res, {

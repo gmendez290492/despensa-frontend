@@ -8,7 +8,12 @@ import { useIsOffline } from "@/components/connection-status-pill";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { TextField } from "@/components/ui/text-field";
-import { useCreatePantryMutation, useJoinPantryMutation } from "@/features/pantry/hooks";
+import {
+  isIdempotencyInProgressError,
+  useActionMutationId,
+  useCreatePantryMutation,
+  useJoinPantryMutation,
+} from "@/features/pantry/hooks";
 import { isProblemDetailError, PROBLEM_TYPES } from "@/lib/api/problem";
 import {
   createPantrySchema,
@@ -28,6 +33,10 @@ function unexpectedBanner(error: unknown): Banner {
   if (isProblemDetailError(error) && (error.status === 0 || error.is(PROBLEM_TYPES.networkError))) {
     return { message: "No pudimos conectar con el servidor. Revisa tu conexión e inténtalo de nuevo." };
   }
+  if (isIdempotencyInProgressError(error)) {
+    // Sin reintento automático: la misma clave se reutiliza al volver a enviar.
+    return { message: "Tu solicitud anterior aún se está procesando. Espera unos segundos e inténtalo de nuevo." };
+  }
   return {
     message: "Algo salió mal. Inténtalo de nuevo; si persiste, contacta a soporte.",
     correlationId: isProblemDetailError(error) ? error.correlation_id : undefined,
@@ -36,6 +45,7 @@ function unexpectedBanner(error: unknown): Banner {
 
 function CreatePantryForm({ offline }: { offline: boolean }) {
   const create = useCreatePantryMutation();
+  const mutationId = useActionMutationId();
   const [banner, setBanner] = useState<Banner | null>(null);
   const {
     register,
@@ -46,7 +56,16 @@ function CreatePantryForm({ offline }: { offline: boolean }) {
   const onSubmit = handleSubmit((values) => {
     if (offline) return;
     setBanner(null);
-    create.mutate(values, { onError: (error) => setBanner(unexpectedBanner(error)) });
+    create.mutate(
+      { input: values, idempotencyKey: mutationId.idFor(["create-pantry", values]) },
+      {
+        onSuccess: () => mutationId.release(),
+        onError: (error) => {
+          mutationId.release(error);
+          setBanner(unexpectedBanner(error));
+        },
+      },
+    );
   });
 
   return (
@@ -97,6 +116,7 @@ function CreatePantryForm({ offline }: { offline: boolean }) {
 
 function JoinPantryForm({ offline }: { offline: boolean }) {
   const join = useJoinPantryMutation();
+  const mutationId = useActionMutationId();
   const [banner, setBanner] = useState<Banner | null>(null);
   const {
     register,
@@ -108,8 +128,10 @@ function JoinPantryForm({ offline }: { offline: boolean }) {
   const onSubmit = handleSubmit((values) => {
     if (offline) return;
     setBanner(null);
-    join.mutate(values, {
+    join.mutate({ input: values, idempotencyKey: mutationId.idFor(["join-pantry", values]) }, {
+      onSuccess: () => mutationId.release(),
       onError: (error) => {
+        mutationId.release(error);
         if (isProblemDetailError(error) && error.is(PROBLEM_TYPES.invalidInviteCode)) {
           setError(
             "invite_code",
@@ -191,6 +213,10 @@ function JoinPantryForm({ offline }: { offline: boolean }) {
  *   identificador, no prosa).
  * - Sin conexión se bloquea el envío con texto visible (estas acciones no se
  *   encolan en la outbox).
+ * - Cada envío lleva una `Idempotency-Key` por intención (`useActionMutationId`):
+ *   el doble toque o el reintento tras 5xx/timeout con el mismo cuerpo
+ *   reutiliza la clave; un `409 idempotency-request-in-progress` muestra un
+ *   aviso para esperar, sin reintentar en bucle.
  *
  * @returns La sección de onboarding.
  *

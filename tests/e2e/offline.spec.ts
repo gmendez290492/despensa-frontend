@@ -31,7 +31,11 @@ test("sin red, /login abre desde caché con la pill 'Sin conexión' y submit des
     page.getByRole("heading", { name: /Bienvenido de vuelta a tu despensa/i }),
   ).toBeVisible();
   await expect(page.getByText("Sin conexión")).toBeVisible();
-  await expect(page.getByRole("button", { name: /iniciar sesión/i })).toBeDisabled();
+  // aria-disabled (no `disabled`): sigue enfocable y anuncia la pista de conexión.
+  await expect(page.getByRole("button", { name: /iniciar sesión/i })).toHaveAttribute(
+    "aria-disabled",
+    "true",
+  );
 });
 
 test("al reconectar, el submit de /login se rehabilita y el login funciona", async ({
@@ -60,10 +64,11 @@ test("al reconectar, el submit de /login se rehabilita y el login funciona", asy
 
   await context.setOffline(true);
   await expect(page.getByText("Sin conexión")).toBeVisible();
-  await expect(submit).toBeDisabled();
+  await expect(submit).toHaveAttribute("aria-disabled", "true");
 
   await context.setOffline(false);
   await expect(page.getByText("Sin conexión")).toHaveCount(0);
+  await expect(submit).not.toHaveAttribute("aria-disabled");
   await expect(submit).toBeEnabled();
 
   await submit.click();

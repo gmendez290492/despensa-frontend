@@ -40,7 +40,7 @@ export default function RootError({
         <div className="mb-5 flex size-11 items-center justify-center rounded-[4px] border border-error/25 bg-error-container text-error">
           <AlertTriangle aria-hidden="true" className="size-5" strokeWidth={1.8} />
         </div>
-        <h1 className="font-display text-[32px] leading-[1.18] font-normal tracking-tight text-foreground">
+        <h1 className="font-display text-[2rem] leading-[1.18] font-normal tracking-tight text-foreground">
           Algo salió mal
         </h1>
         <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">

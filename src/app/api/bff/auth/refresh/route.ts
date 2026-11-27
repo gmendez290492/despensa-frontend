@@ -1,6 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { PROBLEM_TYPES, ProblemDetailError, problemTypeUri } from "@/lib/api/problem";
-import { DEFAULT_AUTHENTICATED_PATH, LOGIN_PATH, OFFLINE_PATH } from "@/lib/auth/constants";
+import {
+  DEFAULT_AUTHENTICATED_PATH,
+  LOGIN_PATH,
+  OFFLINE_PATH,
+  OFFLINE_REASON_PARAM,
+  OFFLINE_REASON_RATE_LIMIT,
+} from "@/lib/auth/constants";
 import { safeRedirectPath } from "@/lib/auth/redirect";
 import { clearSessionCookies, getSessionTokens, refreshSession } from "@/lib/auth/session";
 import {
@@ -47,8 +53,10 @@ export async function POST(request: NextRequest) {
  *   sitio no puede forzar rotaciones de tokens).
  * - Refresh rechazado (4xx) -> limpia cookies y 303 a `/login?next=`.
  * - Backend caído (5xx / red) -> 303 a `/offline`, conservando la sesión.
- * - Rate limit del refresh (429, despensa-frontend#6) -> 303 a `/offline` con
- *   `Retry-After`, conservando la sesión.
+ * - Rate limit del refresh (429, despensa-frontend#6) -> 303 a
+ *   `/offline?motivo=limite&next=` con `Retry-After`, conservando la sesión.
+ *   `motivo` cambia el texto del fallback ("Demasiados intentos", no "Sin
+ *   conexión") y `next` permite que "Reintentar" vuelva a la ruta original.
  */
 export async function GET(request: NextRequest) {
   const correlationId = getCorrelationId(request);
@@ -82,7 +90,9 @@ export async function GET(request: NextRequest) {
       if (error.status === 429) {
         // Es una navegación: en vez de mostrar problem+json en crudo, se lleva
         // al fallback `/offline` (con "Reintentar") conservando la sesión.
-        const response = redirect(OFFLINE_PATH);
+        const query = new URLSearchParams({ [OFFLINE_REASON_PARAM]: OFFLINE_REASON_RATE_LIMIT });
+        if (next !== DEFAULT_AUTHENTICATED_PATH) query.set("next", next);
+        const response = redirect(`${OFFLINE_PATH}?${query}`);
         if (error.retry_after !== undefined) {
           response.headers.set("Retry-After", String(error.retry_after));
         }

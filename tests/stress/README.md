@@ -20,6 +20,8 @@ $env:SCENARIO="smoke"; pnpm test:stress                                         
 | `refresh_storm` | 100 VUs con el **mismo** refresh token y sin access token | El mutex del BFF hace una sola rotación y FastAPI no revoca la familia | `refresh_ok > 99 %`, la sesión sigue viva |
 | `idempotent_replay` | 20 claves × 5 reenvíos | Que una `Idempotency-Key` repetida descuenta **una** sola vez | `replay_extra_deductions==0`. Pasa desde despensa-backend#14 (cierra [#11](https://github.com/gmendez290492/despensa-backend/issues/11)) |
 
+- `DASHBOARD_MODE` (`smoke`/`load`/`spike`/`soak`): `split` (por defecto) hace 4 GET en paralelo por vista. `aggregate` hace 1 GET a `/api/bff/pantries/{id}/dashboard` (despensa-backend#20); los umbrales pasan a la métrica `{name:dashboard}`. Ejemplo: `SCENARIO=load DASHBOARD_MODE=aggregate pnpm test:stress`.
+- Para medir el backend como en producción (varios workers, sin `--reload`) usa `docker compose -f docker-compose.yml -f docker-compose.prod-like.yml up -d --build api` en el backend (despensa-backend#19).
 - El `setup()` registra un usuario por VU y los une al mismo hogar con el `invite_code`.
 - FastAPI debe arrancar con los rate limits relajados (`docs/FRONTEND_CONTEXT.md` §5).
 - Los informes JSON se guardan en `tests/stress/reports/` (ignorado por git).

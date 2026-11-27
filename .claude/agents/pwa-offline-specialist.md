@@ -23,3 +23,14 @@ Eres el **Especialista en Sistemas Local-First, PWA y Hardware Web de `despensa-
 
 4. **Máquinas de Estado para Escáner y Cámara (`XState v5`):**
    - Modela el ciclo de cámara (`navigator.mediaDevices.getUserMedia` + `BarcodeDetector` / fallback) con estados explícitos en XState (`idle` → `requestingPermission` → `scanning` → `resolvingBarcode` → `confirmed` | `unknownBarcode` | `permissionDenied`), evitando condiciones de carrera o lecturas duplicadas en ráfaga.
+
+## Estado real de la outbox (Etapa 2, `src/lib/offline/outbox.ts`)
+
+Antes de cambiar la outbox, lee su JSDoc y `tests/unit/{outbox,pantry-hooks}.test.*`. Las reglas ya implementadas son contrato:
+
+- **Ligada al usuario (Dexie v2, índice `userId`):** `drainOutbox` exige `userId`. Dentro del Web Lock **borra** las filas de otros usuarios o sin dueño (privacidad) y solo envía las del usuario actual. Antes de drenar, `useOutboxSync` comprueba la sesión con `GET /me` sin caché. Un 401 **pausa** la cola: sin timers y sin bucle.
+- **Clave idempotente estable:** el `clientMutationId` **es** la `Idempotency-Key`. Se reutiliza en todos los reintentos (red, 5xx, 408, 429, `409 idempotency-request-in-progress` con `Retry-After`). En la UI, `useActionMutationId()` la mantiene mientras el cuerpo no cambie. `invalid-idempotency-key` e `idempotency-key-reused` nunca se reintentan.
+- **TTL:** FastAPI olvida las claves a las 168 h. Las filas con más de `OUTBOX_MAX_REPLAY_AGE_MS` (6 d 20 h) pasan a conflicto `outbox-entry-expired`. `retryExpiredOutboxRecord` las reenvía con una **clave nueva**, solo si el usuario lo confirma.
+- **Seguridad del destino:** allowlist por `kind` (`OUTBOX_ENDPOINT_RULES`), se rechaza `//` y se usa `redirect: "manual"`. Con `"error"` una redirección parecería un error de red y bloquearía la cola.
+- **Privacidad:** los consumos encolados sin red no guardan `notes`. Solo se guardan si la petición ya salió, porque el cuerpo debe coincidir con la clave.
+- **Consumo optimista:** espejo de `consume_product_fefo` en milésimas enteras (`decimal.ts`). `useBatches` rebasa los consumos `pending`/`syncing` del usuario y envejece el semáforo de una caché de días anteriores (`ageBatches`).

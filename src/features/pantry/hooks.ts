@@ -21,7 +21,14 @@ import {
   renewedOutboxChanges,
   type OutboxSender,
 } from "@/lib/offline/outbox";
-import type { ConsumeInput, ConsumePayload, CreatePantryInput, JoinPantryInput } from "@/lib/pantry/schemas";
+import type {
+  ConsumeInput,
+  ConsumePayload,
+  CreateLocationInput,
+  CreatePantryInput,
+  CreateProductInput,
+  JoinPantryInput,
+} from "@/lib/pantry/schemas";
 import { consumeSchema } from "@/lib/pantry/schemas";
 import { useUiStore } from "@/stores/ui-store";
 import { authKeys, fetchCurrentUser, type UserResponse } from "@/features/auth/api";
@@ -29,17 +36,23 @@ import { useCurrentUser } from "@/features/auth/hooks";
 import {
   BFF_PANTRY_ROUTES,
   consumeRequest,
+  createLocationRequest,
   createPantryRequest,
+  createProductRequest,
   fetchBatches,
   fetchLocations,
   fetchPantries,
+  fetchPantryDashboard,
   fetchUnreadNotifications,
   joinPantryRequest,
   pantryKeys,
+  productKeys,
   type ConsumeResultResponse,
   type FoodBatchResponse,
   type LocationResponse,
+  type PantryDashboardResponse,
   type PantryResponse,
+  type ProductResponse,
 } from "@/features/pantry/api";
 import {
   ageBatches,
@@ -96,12 +109,20 @@ function verifiedUser(queryClient: QueryClient): Promise<UserResponse | null> {
 /**
  * Hogares del usuario.
  *
+ * Con un `activePantryId` persistido, la lista sale del **dashboard** de ese
+ * hogar (`GET /pantries/{id}/dashboard`, que además siembra ubicaciones, lotes
+ * y alertas): la primera carga del panel o del inventario es una sola
+ * petición. Si el dashboard falla (salvo `401`: `403` por un ID ajeno o
+ * revocado, `404` de un backend antiguo, 5xx…) o no hay hogar guardado, cae a
+ * `GET /pantries`.
+ *
  * @returns `UseQueryResult<PantryResponse[], ProblemDetailError>`.
  */
 export function usePantries() {
+  const queryClient = useQueryClient();
   return useQuery<PantryResponse[], ProblemDetailError>({
     queryKey: pantryKeys.list(),
-    queryFn: fetchPantries,
+    queryFn: () => loadPantries(queryClient),
     staleTime: 5 * 60 * 1000,
     retry: retryUnlessClientError,
   });
@@ -152,14 +173,19 @@ export function useActivePantry(): ActivePantryState {
 }
 
 /**
- * Ubicaciones del hogar.
+ * Ubicaciones del hogar. Si hay un dashboard de ese hogar en vuelo, espera su
+ * respuesta en lugar de pedir `GET /locations` (ver {@link usePantryDashboard}).
  *
  * @param pantryId - Hogar activo (`null` desactiva la query).
+ * @returns `UseQueryResult<LocationResponse[], ProblemDetailError>`.
  */
 export function useLocations(pantryId: string | null) {
+  const queryClient = useQueryClient();
   return useQuery<LocationResponse[], ProblemDetailError>({
     queryKey: pantryKeys.locations(pantryId ?? "none"),
-    queryFn: () => fetchLocations(pantryId!),
+    queryFn: async () =>
+      (await fromInFlightDashboard(queryClient, pantryId!, (dashboard) => dashboard.locations, isPantryScopedFinal)) ??
+      fetchLocations(pantryId!),
     enabled: pantryId !== null,
     staleTime: 5 * 60 * 1000,
     retry: retryUnlessClientError,
@@ -218,6 +244,9 @@ async function rebaseOnPendingConsumes(
  * día anterior (días sin red, pestaña abierta desde ayer) `dias_para_vencer`
  * y `semaforo` se recalculan con la fecha local del dispositivo.
  *
+ * Si hay un dashboard de ese hogar en vuelo, espera su respuesta en lugar de
+ * pedir `GET /batches` (ver {@link usePantryDashboard}).
+ *
  * @param pantryId - Hogar activo (`null` desactiva la query).
  * @returns `UseQueryResult<FoodBatchResponse[], ProblemDetailError>`.
  */
@@ -234,7 +263,10 @@ export function useBatches(pantryId: string | null) {
   );
   return useQuery<FoodBatchResponse[], ProblemDetailError>({
     queryKey: pantryKeys.batches(pantryId ?? "none"),
-    queryFn: async () => rebaseOnPendingConsumes(queryClient, pantryId!, await fetchBatches(pantryId!)),
+    queryFn: async () =>
+      // El dashboard ya devuelve los lotes rebasados con la outbox.
+      (await fromInFlightDashboard(queryClient, pantryId!, (dashboard) => dashboard.batches, isPantryScopedFinal)) ??
+      rebaseOnPendingConsumes(queryClient, pantryId!, await fetchBatches(pantryId!)),
     enabled: pantryId !== null,
     staleTime: 30 * 1000,
     retry: retryUnlessClientError,
@@ -242,13 +274,281 @@ export function useBatches(pantryId: string | null) {
   });
 }
 
-/** Número de alertas sin leer (campana de la cabecera). */
+/**
+ * Número de alertas sin leer (campana de la cabecera). Si hay algún dashboard
+ * en vuelo usa su `unread_notifications` (es del usuario, no del hogar); si
+ * ese dashboard falla, pide `GET /notifications` por su cuenta.
+ *
+ * @returns `UseQueryResult<number, ProblemDetailError>`.
+ */
 export function useUnreadNotificationsCount() {
+  const queryClient = useQueryClient();
   return useQuery<number, ProblemDetailError>({
     queryKey: pantryKeys.unreadNotifications(),
-    queryFn: async () => (await fetchUnreadNotifications()).unread_count,
+    queryFn: async () =>
+      (await fromInFlightDashboard(queryClient, undefined, (dashboard) => dashboard.unread_notifications, isUnauthorized)) ??
+      (await fetchUnreadNotifications()).unread_count,
     staleTime: 60 * 1000,
     retry: retryUnlessClientError,
+  });
+}
+
+/*
+ * ── Dashboard agregado (`GET /pantries/{id}/dashboard`) ──────────────────────
+ *
+ * Una petición trae lo que el panel pedía en 4 (hogares, ubicaciones, lotes y
+ * alertas). No hay una caché paralela para la UI: la respuesta **siembra** las
+ * claves sueltas (`pantryKeys.list/locations/batches/unreadNotifications`) y
+ * los componentes, el *rebase* de la outbox, `ageBatches`, los optimistas y
+ * las invalidaciones siguen usando esas claves.
+ *
+ * - Refetch: tras mutaciones se invalidan las claves sueltas (quirúrgico, una
+ *   petición pequeña); foco y reconexión también los gestionan ellas. El
+ *   dashboard solo se repite al montar el panel con datos de más de
+ *   DASHBOARD_STALE_TIME_MS, al cambiar de hogar o al invalidar el hogar.
+ * - Deduplicación: las queries sueltas que arrancan mientras hay un dashboard
+ *   en vuelo esperan su respuesta en lugar de pedir su endpoint.
+ * - Fallback: un `404` (backend sin el endpoint) desactiva el dashboard durante
+ *   DASHBOARD_UNSUPPORTED_TTL_MS; mientras, todo usa las 4 llamadas.
+ */
+
+/** `staleTime` del dashboard: el de los lotes, el dato más volátil del panel. */
+export const DASHBOARD_STALE_TIME_MS = 30 * 1000;
+
+/**
+ * Tras un `404` del dashboard (backend sin el endpoint), tiempo durante el que
+ * se usan directamente las llamadas sueltas antes de volver a probarlo.
+ */
+export const DASHBOARD_UNSUPPORTED_TTL_MS = 15 * 60 * 1000;
+
+const dashboardUnsupportedAt = new WeakMap<QueryClient, number>();
+const dashboardsInFlight = new WeakMap<QueryClient, Map<string, Promise<PantryDashboardResponse | null>>>();
+
+function isDashboardUnsupported(queryClient: QueryClient): boolean {
+  const at = dashboardUnsupportedAt.get(queryClient);
+  return at !== undefined && Date.now() - at < DASHBOARD_UNSUPPORTED_TTL_MS;
+}
+
+const isUnauthorized = (error: unknown) => isProblemDetailError(error) && error.status === 401;
+
+/** `401`/`403` del dashboard valen para las rutas sueltas del mismo hogar: no se repiten. */
+const isPantryScopedFinal = (error: unknown) =>
+  isProblemDetailError(error) && (error.status === 401 || error.status === 403);
+
+/**
+ * Si hay un dashboard en vuelo (del hogar dado o, sin `pantryId`, de
+ * cualquiera), espera su respuesta y extrae una parte.
+ *
+ * @returns La parte, o `undefined` si no hay dashboard en vuelo, respondió
+ *   `404` o falló con un error que no se propaga (la query pide su endpoint).
+ */
+async function fromInFlightDashboard<T>(
+  queryClient: QueryClient,
+  pantryId: string | undefined,
+  pick: (dashboard: PantryDashboardResponse) => T,
+  propagate: (error: unknown) => boolean,
+): Promise<T | undefined> {
+  const inFlight = dashboardsInFlight.get(queryClient);
+  const pending = pantryId === undefined ? inFlight?.values().next().value : inFlight?.get(pantryId);
+  if (!pending) return undefined;
+  try {
+    const dashboard = await pending;
+    return dashboard ? pick(dashboard) : undefined;
+  } catch (error) {
+    if (propagate(error)) throw error;
+    return undefined;
+  }
+}
+
+interface SeedSnapshot {
+  dataUpdatedAt: number;
+  isInvalidated: boolean;
+}
+
+function seedSnapshot(queryClient: QueryClient, queryKey: readonly unknown[]): SeedSnapshot {
+  const state = queryClient.getQueryState(queryKey);
+  return { dataUpdatedAt: state?.dataUpdatedAt ?? 0, isInvalidated: state?.isInvalidated ?? false };
+}
+
+/**
+ * `true` si nadie tocó la clave mientras el dashboard estaba en vuelo: ni
+ * datos nuevos, ni una invalidación, ni un fetch propio en curso (que
+ * entregará su propio resultado). Si la tocaron, sembrar podría pisar algo
+ * más reciente y se omite.
+ */
+function untouchedSince(queryClient: QueryClient, queryKey: readonly unknown[], before: SeedSnapshot): boolean {
+  const state = queryClient.getQueryState(queryKey);
+  if (!state) return true;
+  if (state.fetchStatus === "fetching") return false;
+  return state.dataUpdatedAt === before.dataUpdatedAt && (before.isInvalidated || !state.isInvalidated);
+}
+
+/**
+ * `true` si hay un consumo de ese hogar en vuelo o enviado desde `since`: su
+ * optimista (o la invalidación de su `onSettled`) es más reciente que el
+ * dashboard y no debe pisarse.
+ */
+function hasConsumeActivity(queryClient: QueryClient, pantryId: string, since: number): boolean {
+  return queryClient
+    .getMutationCache()
+    .findAll({ mutationKey: CONSUME_MUTATION_KEY })
+    .some((mutation) => {
+      const variables = mutation.state.variables as Partial<ConsumeVariables> | undefined;
+      if (variables?.pantryId !== pantryId) return false;
+      return mutation.state.status === "pending" || mutation.state.submittedAt >= since;
+    });
+}
+
+/**
+ * `queryFn` del dashboard: pide el agregado, re-aplica los consumos de la
+ * outbox a los lotes y siembra las claves sueltas que nadie tocó mientras
+ * estaba en vuelo (los lotes, además, solo sin consumos de ese hogar en vuelo
+ * ni enviados entretanto). Todas con `updatedAt` = llegada de la respuesta,
+ * para que `ageBatches` envejezca desde ahí. Los lotes se siembran antes que
+ * la lista: al aparecer el hogar sus datos ya están.
+ *
+ * @returns La respuesta (lotes ya rebasados) o `null` si el backend no tiene
+ *   el endpoint (`404`).
+ */
+async function loadPantryDashboard(
+  queryClient: QueryClient,
+  pantryId: string,
+): Promise<PantryDashboardResponse | null> {
+  if (isDashboardUnsupported(queryClient)) return null;
+  const keys = {
+    batches: pantryKeys.batches(pantryId),
+    locations: pantryKeys.locations(pantryId),
+    unread: pantryKeys.unreadNotifications(),
+    list: pantryKeys.list(),
+  };
+  const startedAt = Date.now();
+  const before = {
+    batches: seedSnapshot(queryClient, keys.batches),
+    locations: seedSnapshot(queryClient, keys.locations),
+    unread: seedSnapshot(queryClient, keys.unread),
+    list: seedSnapshot(queryClient, keys.list),
+  };
+  const consumeBusyAtStart = hasConsumeActivity(queryClient, pantryId, Number.POSITIVE_INFINITY);
+
+  const run = async (): Promise<PantryDashboardResponse | null> => {
+    let response: PantryDashboardResponse;
+    try {
+      response = await fetchPantryDashboard(pantryId);
+    } catch (error) {
+      if (isProblemDetailError(error) && error.status === 404) {
+        dashboardUnsupportedAt.set(queryClient, Date.now());
+        return null;
+      }
+      throw error;
+    }
+    const batches = await rebaseOnPendingConsumes(queryClient, pantryId, response.batches);
+    const updatedAt = Date.now();
+    if (
+      !consumeBusyAtStart &&
+      !hasConsumeActivity(queryClient, pantryId, startedAt) &&
+      untouchedSince(queryClient, keys.batches, before.batches)
+    ) {
+      queryClient.setQueryData<FoodBatchResponse[]>(keys.batches, batches, { updatedAt });
+    }
+    if (untouchedSince(queryClient, keys.locations, before.locations)) {
+      queryClient.setQueryData<LocationResponse[]>(keys.locations, response.locations, { updatedAt });
+    }
+    if (untouchedSince(queryClient, keys.unread, before.unread)) {
+      queryClient.setQueryData<number>(keys.unread, response.unread_notifications, { updatedAt });
+    }
+    if (untouchedSince(queryClient, keys.list, before.list)) {
+      queryClient.setQueryData<PantryResponse[]>(keys.list, response.pantries, { updatedAt });
+    }
+    return { ...response, batches };
+  };
+
+  let inFlight = dashboardsInFlight.get(queryClient);
+  if (!inFlight) {
+    inFlight = new Map();
+    dashboardsInFlight.set(queryClient, inFlight);
+  }
+  const promise = run();
+  inFlight.set(pantryId, promise);
+  try {
+    return await promise;
+  } finally {
+    if (inFlight.get(pantryId) === promise) inFlight.delete(pantryId);
+  }
+}
+
+function pantryDashboardQueryOptions(queryClient: QueryClient, pantryId: string) {
+  return {
+    queryKey: pantryKeys.dashboard(pantryId),
+    queryFn: () => loadPantryDashboard(queryClient, pantryId),
+    // `null` (404): no se vuelve a pedir hasta que caduque el fallback.
+    staleTime: (query: { state: { data: PantryDashboardResponse | null | undefined } }) =>
+      query.state.data === null ? DASHBOARD_UNSUPPORTED_TTL_MS : DASHBOARD_STALE_TIME_MS,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: retryUnlessClientError,
+  };
+}
+
+/**
+ * Lista de hogares: vía el dashboard del hogar guardado si lo hay (ver
+ * {@link usePantries}); si no, `GET /pantries`.
+ */
+async function loadPantries(queryClient: QueryClient): Promise<PantryResponse[]> {
+  const storedId = useUiStore.getState().activePantryId;
+  if (storedId && !isDashboardUnsupported(queryClient)) {
+    try {
+      // `staleTime: 0`: si la lista hay que pedirla, el dashboard también
+      // (o se reutiliza el que ya está en vuelo). Sin reintentos propios: los
+      // hace la query de la lista.
+      const dashboard = await queryClient.fetchQuery<PantryDashboardResponse | null, ProblemDetailError>({
+        ...pantryDashboardQueryOptions(queryClient, storedId),
+        staleTime: 0,
+        retry: false,
+      });
+      if (dashboard) return dashboard.pantries;
+    } catch (error) {
+      if (isUnauthorized(error)) throw error;
+    }
+  }
+  return fetchPantries();
+}
+
+/**
+ * Carga agregada del panel (`GET /api/bff/pantries/{id}/dashboard`): hogares,
+ * ubicaciones, lotes FEFO y alertas sin leer en **una** petición.
+ *
+ * No leas los datos de aquí: la respuesta siembra las claves de
+ * {@link usePantries}, {@link useLocations}, {@link useBatches} y
+ * {@link useUnreadNotificationsCount}, que siguen siendo la fuente de la UI.
+ * Llámalo en el componente **antes** que esas queries: así, al montar o al
+ * cambiar de hogar, arranca primero y ellas esperan su respuesta en lugar de
+ * pedir sus endpoints.
+ *
+ * - No siembra los lotes si hay un consumo de ese hogar en vuelo (o enviado
+ *   mientras el dashboard viajaba), ni ninguna clave que se haya actualizado,
+ *   invalidado o esté pidiéndose por su cuenta entretanto.
+ * - `data === null`: el backend no tiene el endpoint (`404`); durante
+ *   {@link DASHBOARD_UNSUPPORTED_TTL_MS} las queries sueltas piden lo suyo.
+ * - Un `403 pantry-access-denied` llega igual a `useBatches` y `useLocations`
+ *   (sin repetir la petición), así que la UI se comporta como con un `403` en
+ *   los lotes.
+ * - `staleTime` {@link DASHBOARD_STALE_TIME_MS}, sin refetch por foco ni
+ *   reconexión (lo hacen las queries sueltas).
+ *
+ * @param pantryId - Hogar activo (`null` desactiva la query).
+ * @returns `UseQueryResult<PantryDashboardResponse | null, ProblemDetailError>`.
+ *
+ * @example
+ * ```tsx
+ * usePantryDashboard(pantry.id);
+ * const batchesQuery = useBatches(pantry.id); // sembrada por el dashboard
+ * ```
+ */
+export function usePantryDashboard(pantryId: string | null) {
+  const queryClient = useQueryClient();
+  return useQuery<PantryDashboardResponse | null, ProblemDetailError>({
+    ...pantryDashboardQueryOptions(queryClient, pantryId ?? "none"),
+    enabled: pantryId !== null,
   });
 }
 
@@ -264,23 +564,119 @@ function useOnPantryCreated() {
   };
 }
 
-/** Crear hogar (solo con red: no tiene sentido encolarlo). */
+/**
+ * Variables de las mutaciones online idempotentes (crear hogar, unirse, crear
+ * ubicación, crear producto). La clave viaja como variable porque en TanStack
+ * v5 `mutationFn` no ve el contexto de `onMutate`.
+ */
+export interface IdempotentVariables<TInput> {
+  /** Cuerpo ya validado con Zod. */
+  input: TInput;
+  /**
+   * `Idempotency-Key` de la intención del usuario: obténla con
+   * `useActionMutationId().idFor(...)` para que el doble toque y el reintento
+   * tras 5xx/timeout reutilicen la misma clave.
+   */
+  idempotencyKey: string;
+}
+
+/** Variables de {@link useCreateLocationMutation}. */
+export interface CreateLocationVariables extends IdempotentVariables<CreateLocationInput> {
+  /** Hogar donde se crea la ubicación. */
+  pantryId: string;
+}
+
+/**
+ * `true` si FastAPI aún procesa otra petición con la misma `Idempotency-Key`
+ * (`409 idempotency-request-in-progress`, p. ej. doble toque o reintento
+ * mientras la primera sigue en curso). Nunca se reintenta solo: la UI pide al
+ * usuario que espere y vuelva a intentarlo (con la misma clave, que
+ * `useActionMutationId` conserva por ser un error transitorio).
+ *
+ * @param error - Error de la mutación.
+ * @returns `true` si es ese conflicto.
+ */
+export function isIdempotencyInProgressError(error: unknown): boolean {
+  return isProblemDetailError(error) && error.is(PROBLEM_TYPES.idempotencyRequestInProgress);
+}
+
+/**
+ * Crear hogar (solo con red: no tiene sentido encolarlo). Envía
+ * `Idempotency-Key`; sin reintentos automáticos (`retry: false`).
+ *
+ * @returns `UseMutationResult<PantryResponse, ProblemDetailError, IdempotentVariables<CreatePantryInput>>`.
+ *
+ * @example
+ * ```tsx
+ * const create = useCreatePantryMutation();
+ * const mutationId = useActionMutationId();
+ * create.mutate(
+ *   { input: values, idempotencyKey: mutationId.idFor(["create-pantry", values]) },
+ *   { onSuccess: () => mutationId.release(), onError: (error) => mutationId.release(error) },
+ * );
+ * ```
+ */
 export function useCreatePantryMutation() {
   const onCreated = useOnPantryCreated();
-  return useMutation<PantryResponse, ProblemDetailError, CreatePantryInput>({
-    mutationFn: createPantryRequest,
+  return useMutation<PantryResponse, ProblemDetailError, IdempotentVariables<CreatePantryInput>>({
+    mutationFn: ({ input, idempotencyKey }) => createPantryRequest(input, idempotencyKey),
     networkMode: "online",
+    retry: false,
     onSuccess: onCreated,
   });
 }
 
-/** Unirse a un hogar con código de invitación (solo con red). */
+/**
+ * Unirse a un hogar con código de invitación (solo con red). Envía
+ * `Idempotency-Key`; sin reintentos automáticos.
+ *
+ * @returns `UseMutationResult<PantryResponse, ProblemDetailError, IdempotentVariables<JoinPantryInput>>`.
+ */
 export function useJoinPantryMutation() {
   const onCreated = useOnPantryCreated();
-  return useMutation<PantryResponse, ProblemDetailError, JoinPantryInput>({
-    mutationFn: joinPantryRequest,
+  return useMutation<PantryResponse, ProblemDetailError, IdempotentVariables<JoinPantryInput>>({
+    mutationFn: ({ input, idempotencyKey }) => joinPantryRequest(input, idempotencyKey),
     networkMode: "online",
+    retry: false,
     onSuccess: onCreated,
+  });
+}
+
+/**
+ * Crear una ubicación en un hogar (solo con red). Envía `Idempotency-Key`;
+ * al terminar añade la ubicación a `pantryKeys.locations(pantryId)` e
+ * invalida solo esa clave.
+ *
+ * @returns `UseMutationResult<LocationResponse, ProblemDetailError, CreateLocationVariables>`.
+ */
+export function useCreateLocationMutation() {
+  const queryClient = useQueryClient();
+  return useMutation<LocationResponse, ProblemDetailError, CreateLocationVariables>({
+    mutationFn: ({ pantryId, input, idempotencyKey }) => createLocationRequest(pantryId, input, idempotencyKey),
+    networkMode: "online",
+    retry: false,
+    onSuccess: (location, { pantryId }) => {
+      queryClient.setQueryData<LocationResponse[]>(pantryKeys.locations(pantryId), (previous) =>
+        previous && !previous.some((item) => item.id === location.id) ? [...previous, location] : previous,
+      );
+      void queryClient.invalidateQueries({ queryKey: pantryKeys.locations(pantryId) });
+    },
+  });
+}
+
+/**
+ * Crear un producto en el catálogo (solo con red). Envía `Idempotency-Key`;
+ * al terminar invalida las búsquedas de productos (`productKeys.all`).
+ *
+ * @returns `UseMutationResult<ProductResponse, ProblemDetailError, IdempotentVariables<CreateProductInput>>`.
+ */
+export function useCreateProductMutation() {
+  const queryClient = useQueryClient();
+  return useMutation<ProductResponse, ProblemDetailError, IdempotentVariables<CreateProductInput>>({
+    mutationFn: ({ input, idempotencyKey }) => createProductRequest(input, idempotencyKey),
+    networkMode: "online",
+    retry: false,
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: productKeys.all }),
   });
 }
 
@@ -474,9 +870,11 @@ export interface ActionMutationId {
 
 /**
  * `Idempotency-Key` estable por **acción del usuario** en un formulario: el
- * reintento manual del mismo consumo reutiliza la clave (FastAPI lo
+ * doble toque o el reintento manual del mismo cuerpo (consumo, crear hogar,
+ * unirse, crear ubicación o producto) reutiliza la clave (FastAPI lo
  * deduplica), y se regenera al cambiar el cuerpo (si no, `422
- * idempotency-key-reused`), tras el éxito o tras un error definitivo.
+ * idempotency-key-reused`), tras el éxito o tras un error definitivo. Incluye
+ * en `body` todo lo que define la petición (ruta incluida, p. ej. `pantryId`).
  *
  * @returns {@link ActionMutationId}.
  *
@@ -795,6 +1193,7 @@ export async function countPendingOutbox(userId?: string): Promise<number> {
  * Descarta un conflicto de la outbox (el usuario acepta la verdad del servidor).
  *
  * @param id - `id` de la fila.
+ * @returns Promesa que se resuelve al borrar la fila.
  */
 export async function discardOutboxRecord(id: number): Promise<void> {
   const { offlineDb } = await import("@/lib/db/offline-db");

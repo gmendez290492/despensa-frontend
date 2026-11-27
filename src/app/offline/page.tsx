@@ -1,6 +1,8 @@
-import { WifiOff } from "lucide-react";
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { BrandMark } from "@/components/brand/brand-mark";
+import { OfflineCopy } from "./offline-copy";
+import { OfflineMessage } from "./offline-message";
 import { RetryButton } from "./retry-button";
 
 /** Metadatos del fallback offline: `noindex` porque no es contenido navegable para buscadores. */
@@ -13,6 +15,13 @@ export const metadata: Metadata = {
  * Fallback de navegación offline (precacheado por Serwist). Página estática:
  * sin datos de usuario ni accesos dinámicos, para que sea segura de servir a
  * cualquier persona en el dispositivo.
+ *
+ * @remarks
+ * El texto depende de `?motivo=` (`limite` tras un `429` del refresh), pero la
+ * página **no** lee `searchParams`: con `cacheComponents` eso la haría
+ * dinámica y dejaría de prerenderizarse para el precache de Serwist. La hoja
+ * cliente `OfflineMessage` lo lee dentro de `<Suspense>`, cuyo fallback es el
+ * texto por defecto ("Sin conexión") y queda en el HTML estático.
  */
 export default function OfflinePage() {
   return (
@@ -24,21 +33,9 @@ export default function OfflinePage() {
 
         <main className="flex flex-1 flex-col justify-center py-6">
           <section className="rounded-[4px] border border-border-sand bg-surface-lowest p-6 shadow-ambient">
-            <div className="mb-5 flex size-11 items-center justify-center rounded-[4px] border border-amber-status/25 bg-amber-status/10 text-amber-status">
-              <WifiOff aria-hidden="true" className="size-5" strokeWidth={1.8} />
-            </div>
-
-            <h1 className="font-display text-[32px] leading-[1.18] font-normal tracking-tight text-foreground">
-              Sin conexión
-            </h1>
-            <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">
-              No pudimos cargar esta página porque tu dispositivo no tiene conexión a internet.
-              Revisa tu red o acércate a una zona con mejor señal y vuelve a intentarlo.
-            </p>
-            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-              Por tu seguridad, los datos de tu despensa no se muestran sin conexión hasta que
-              verifiquemos tu sesión.
-            </p>
+            <Suspense fallback={<OfflineCopy reason="red" />}>
+              <OfflineMessage />
+            </Suspense>
 
             <div className="mt-6">
               <RetryButton />
@@ -47,7 +44,7 @@ export default function OfflinePage() {
         </main>
 
         <footer className="border-t border-border-sand/70 pt-4 pb-6 text-center">
-          <p className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+          <p className="text-[0.625rem] font-semibold tracking-wider text-muted-foreground uppercase">
             Despensa · Modo sin conexión
           </p>
         </footer>

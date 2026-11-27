@@ -61,7 +61,7 @@ export function Alert({
     <div
       role={tone === "error" ? "alert" : "status"}
       className={cn(
-        "flex items-start gap-2.5 rounded-[4px] border p-3.5 text-[13px] leading-snug",
+        "flex items-start gap-2.5 rounded-[4px] border p-3.5 text-[0.8125rem] leading-snug",
         toneStyles[tone],
         className,
       )}
@@ -72,7 +72,7 @@ export function Alert({
         {title ? <p className="font-semibold">{title}</p> : null}
         {children ? <div className="font-medium">{children}</div> : null}
         {footnote ? (
-          <p className="text-[11px] font-normal break-all opacity-90">{footnote}</p>
+          <p className="text-[0.6875rem] font-normal break-all opacity-90">{footnote}</p>
         ) : null}
       </div>
     </div>

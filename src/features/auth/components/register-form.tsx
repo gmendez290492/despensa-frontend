@@ -12,6 +12,7 @@ import { PasswordField } from "@/components/ui/password-field";
 import { PasswordStrengthMeter } from "@/components/ui/password-strength-meter";
 import { describedBy, Label, TextField } from "@/components/ui/text-field";
 import { useIsOffline } from "@/components/connection-status-pill";
+import { blockSubmitWhileOffline } from "@/features/auth/offline-submit";
 import { TimeZoneField, useDetectedTimeZone } from "@/features/auth/components/timezone-field";
 import { mapAuthError, withNext, type AuthBanner } from "@/features/auth/form-errors";
 import { useRegisterMutation } from "@/features/auth/client";
@@ -58,10 +59,10 @@ function FormSection({
     <fieldset className={cn("min-w-0 space-y-4 p-4", className)}>
       <legend className="sr-only">{title}</legend>
       <div aria-hidden="true" className="flex items-center justify-between border-b border-border-sand pb-1">
-        <span className="text-[11px] font-bold tracking-[0.15em] text-primary-container uppercase">
+        <span className="text-[0.6875rem] font-bold tracking-[0.15em] text-primary-container uppercase">
           {title}
         </span>
-        {caption ? <span className="text-[11px] text-muted-foreground">{caption}</span> : null}
+        {caption ? <span className="text-[0.6875rem] text-muted-foreground">{caption}</span> : null}
       </div>
       {children}
     </fieldset>
@@ -79,12 +80,14 @@ function FormSection({
  * - `required`/`minLength`/`maxLength` replican el esquema Zod (semántica para
  *   lectores de pantalla); los mensajes los sigue dando Zod (`noValidate`).
  * - El slider usa `<input type="range">` nativo con `aria-valuetext`.
+ * - Sin conexión el botón queda `aria-disabled` (enfocable, lee la pista
+ *   `aria-describedby`) y `blockSubmitWhileOffline` bloquea el envío.
  * - Pendiente de decisión de producto: la guía desaconseja pedir la
  *   contraseña dos veces; se mantiene `confirm_password` por el diseño Stitch.
  *
  * @returns El formulario de registro.
  *
- * @see https://developer.chrome.com/docs/modern-web-guidance — guías `autofill-sign-up-form` y `slider`.
+ * @see https://developer.chrome.com/docs/modern-web-guidance — guías `autofill-sign-up-form`, `slider` y `custom-button-actions`.
  */
 export function RegisterForm() {
   const router = useRouter();
@@ -174,7 +177,7 @@ export function RegisterForm() {
     );
 
   return (
-    <form onSubmit={onSubmit} noValidate aria-label="Crear cuenta">
+    <form onSubmit={blockSubmitWhileOffline(offline, onSubmit)} noValidate aria-label="Crear cuenta">
       {banner ? (
         <Alert
           className="mb-4"
@@ -299,7 +302,7 @@ export function RegisterForm() {
             />
             <div
               aria-hidden="true"
-              className="flex items-center justify-between px-0.5 text-[11px] text-muted-foreground"
+              className="flex items-center justify-between px-0.5 text-[0.6875rem] text-muted-foreground"
             >
               <span>1 día (mínimo)</span>
               <span>15 días</span>
@@ -323,7 +326,7 @@ export function RegisterForm() {
           fullWidth
           loading={submitting}
           loadingText="Creando cuenta…"
-          disabled={offline}
+          aria-disabled={offline || undefined}
           aria-describedby={offline ? OFFLINE_HINT_ID : undefined}
         >
           <span>Crear cuenta</span>

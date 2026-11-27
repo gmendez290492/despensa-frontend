@@ -9,6 +9,7 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { TextField } from "@/components/ui/text-field";
 import { useIsOffline } from "@/components/connection-status-pill";
+import { blockSubmitWhileOffline } from "@/features/auth/offline-submit";
 import { useForgotPasswordMutation } from "@/features/auth/client";
 import { mapAuthError, type AuthBanner } from "@/features/auth/form-errors";
 import {
@@ -19,7 +20,7 @@ import {
 
 const FORGOT_FIELDS = ["email"] as const;
 const OFFLINE_HINT_ID = "forgot-offline-hint";
-const labelClass = "text-[12.5px] tracking-wider uppercase";
+const labelClass = "text-[0.78125rem] tracking-wider uppercase";
 
 const linkClass =
   "inline-flex min-h-11 items-center font-semibold text-primary-container underline underline-offset-4 hover:text-foreground focus-visible:rounded-[4px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-container";
@@ -35,10 +36,12 @@ const linkClass =
  * - Tras el envío el formulario se sustituye por un `Alert` `role="status"`
  *   (anuncio cortés) con el mensaje y un enlace para volver a iniciar sesión.
  * - Un `429` muestra cuánto esperar (`Retry-After`) y no se reintenta solo.
+ * - Sin conexión el botón queda `aria-disabled` (enfocable, lee la pista
+ *   `aria-describedby`) y `blockSubmitWhileOffline` bloquea el envío.
  *
  * @returns Tarjeta con el formulario o el mensaje de confirmación.
  *
- * @see https://developer.chrome.com/docs/modern-web-guidance — guías `autofill-sign-in-form` y `forms`.
+ * @see https://developer.chrome.com/docs/modern-web-guidance — guías `autofill-sign-in-form`, `forms` y `custom-button-actions`.
  */
 export function ForgotPasswordForm() {
   const offline = useIsOffline();
@@ -102,7 +105,7 @@ export function ForgotPasswordForm() {
           </Alert>
         ) : null}
 
-        <form onSubmit={onSubmit} noValidate className="space-y-4" aria-label="Recuperar contraseña">
+        <form onSubmit={blockSubmitWhileOffline(offline, onSubmit)} noValidate className="space-y-4" aria-label="Recuperar contraseña">
           <TextField
             id="forgot-email"
             label="Correo electrónico"
@@ -128,7 +131,7 @@ export function ForgotPasswordForm() {
               fullWidth
               loading={forgot.isPending}
               loadingText="Enviando enlace…"
-              disabled={offline}
+              aria-disabled={offline || undefined}
               aria-describedby={offline ? OFFLINE_HINT_ID : undefined}
             >
               <span>Enviar enlace</span>

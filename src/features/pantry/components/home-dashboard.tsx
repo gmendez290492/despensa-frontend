@@ -8,7 +8,12 @@ import { buttonVariants, Button } from "@/components/ui/button";
 import { Label, inputBaseClass } from "@/components/ui/text-field";
 import type { FoodBatchResponse, LocationResponse, PantryResponse } from "@/features/pantry/api";
 import { computeStats, groupByProduct, inStock } from "@/features/pantry/fefo";
-import { useBatches, useLocations, useUnreadNotificationsCount } from "@/features/pantry/hooks";
+import {
+  useBatches,
+  useLocations,
+  usePantryDashboard,
+  useUnreadNotificationsCount,
+} from "@/features/pantry/hooks";
 import { useConsumeDialog } from "@/features/pantry/components/consume-dialog-provider";
 import { PantryErrorState, PantryGate, PantrySkeleton } from "@/features/pantry/components/pantry-states";
 import { PriorityShelf } from "@/features/pantry/components/priority-shelf";
@@ -100,7 +105,11 @@ export function PantrySwitcher({ pantries, activeId, onChange }: PantrySwitcherP
   );
 }
 
-function UnreadAlerts() {
+function UnreadAlerts({ pantryId }: { pantryId: string }) {
+  // Antes que el contador: la cabecera se suscribe antes que el resto del
+  // panel, y el dashboard debe arrancar primero para que el contador espere
+  // su respuesta en lugar de pedir `GET /notifications`.
+  usePantryDashboard(pantryId);
   const unread = useUnreadNotificationsCount();
   if (unread.data === undefined) return null;
   const count = unread.data;
@@ -132,7 +141,7 @@ function PantrySummaryHeader({
     <section aria-label="Hogar" className="space-y-3 rounded-[4px] border border-border-sand bg-surface-low p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="font-display text-lg font-semibold text-primary">{pantry.name}</p>
-        <UnreadAlerts />
+        <UnreadAlerts pantryId={pantry.id} />
       </div>
       <PantrySwitcher pantries={pantries} activeId={pantry.id} onChange={setActivePantryId} />
       <dl className="text-[0.8125rem]">
@@ -252,6 +261,8 @@ function DashboardContent({
   pantries: readonly PantryResponse[];
   setActivePantryId: (id: string) => void;
 }) {
+  // Antes que las queries sueltas: las siembra y ellas esperan su respuesta.
+  usePantryDashboard(pantry.id);
   const batchesQuery = useBatches(pantry.id);
   const locationsQuery = useLocations(pantry.id);
   const { openConsume } = useConsumeDialog();
@@ -378,6 +389,11 @@ function DashboardContent({
  * @remarks
  * - Client Component (TanStack Query + `nuqs`): la página RSC lo envuelve en
  *   `<Suspense>` por `cacheComponents`.
+ * - Datos: `usePantryDashboard` trae hogares, ubicaciones, lotes y alertas en
+ *   una petición y siembra las queries sueltas, que siguen dando la carga, el
+ *   error (un `403` del dashboard llega igual a `useBatches`) y los refetch
+ *   tras mutaciones. Con un backend sin el endpoint (`404`) se usan las 4
+ *   llamadas sueltas.
  * - Se omiten del diseño Stitch los datos sin respaldo en la API: fotos,
  *   dinero ahorrado, escáner de recibos, recetas y "Descartar".
  * - "Consumo rápido" sin stock usa `aria-disabled` (no `disabled`): sigue

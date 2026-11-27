@@ -26,6 +26,7 @@ const pantriesRoute = await import("@/app/api/bff/pantries/route");
 const { POST: joinPantry } = await import("@/app/api/bff/pantries/join/route");
 const locationsRoute = await import("@/app/api/bff/pantries/[pantryId]/locations/route");
 const batchesRoute = await import("@/app/api/bff/pantries/[pantryId]/batches/route");
+const { GET: dashboard } = await import("@/app/api/bff/pantries/[pantryId]/dashboard/route");
 const { POST: consume } = await import("@/app/api/bff/pantries/[pantryId]/consume/route");
 const productsRoute = await import("@/app/api/bff/products/route");
 const { GET: notifications } = await import("@/app/api/bff/notifications/route");
@@ -324,6 +325,90 @@ describe("errores de dominio propagados como problem+json", () => {
       detail: "detalle insufficient-stock",
       correlation_id: "corr-stock-1",
     });
+  });
+});
+
+describe("GET /api/bff/pantries/{id}/dashboard", () => {
+  const dashboardBody = {
+    pantries: [pantry],
+    locations: [{ id: LOCATION_ID, pantry_id: PANTRY_ID, name: "Nevera", description: null }],
+    batches: [],
+    unread_notifications: 3,
+  };
+  const dashboardPath = `/api/v1/pantries/${PANTRY_ID}/dashboard`;
+
+  beforeEach(() => {
+    routes[`GET ${dashboardPath}`] = () => json(dashboardBody);
+  });
+
+  it("200: reenvía el Bearer de la cookie y el X-Correlation-ID, sin caché", async () => {
+    const response = await dashboard(
+      req(`/api/bff/pantries/${PANTRY_ID}/dashboard`, { headers: { "X-Correlation-ID": "corr-dash-1" } }),
+      ctx(PANTRY_ID),
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(dashboardBody);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(response.headers.get("X-Correlation-ID")).toBe("corr-dash-1");
+
+    const calls = backendCalls("GET", dashboardPath);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.headers.get("Authorization")).toBe("Bearer at-valid");
+    expect(calls[0]?.headers.get("X-Correlation-ID")).toBe("corr-dash-1");
+    expect(calls[0]?.headers.has("Idempotency-Key")).toBe(false);
+    expect(new URL(calls[0]!.url).search).toBe("");
+    // Una sola llamada a FastAPI: nada de las 4 rutas sueltas.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["not-a-uuid", "..%2F..%2Fusers", `${PANTRY_ID}/x`])(
+    "pantryId %s → 400 invalid-request sin llamar a FastAPI",
+    async (pantryId) => {
+      const response = await dashboard(
+        req(`/api/bff/pantries/${encodeURIComponent(pantryId)}/dashboard`),
+        ctx(pantryId),
+      );
+      expect(response.status).toBe(400);
+      expect((await response.json()).type).toBe(`${ERR}invalid-request`);
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it("403 pantry-access-denied pasa como problem+json sin rotar tokens", async () => {
+    routes[`GET ${dashboardPath}`] = () => problem("pantry-access-denied", 403, "corr-dash-403");
+    const response = await dashboard(req(`/api/bff/pantries/${PANTRY_ID}/dashboard`), ctx(PANTRY_ID));
+    expect(response.status).toBe(403);
+    expect(response.headers.get("Content-Type")).toContain("application/problem+json");
+    expect(response.headers.get("X-Correlation-ID")).toBe("corr-dash-403");
+    expect(await response.json()).toMatchObject({
+      type: `${ERR}pantry-access-denied`,
+      status: 403,
+      correlation_id: "corr-dash-403",
+    });
+    expect(backendCalls("POST", "/api/v1/auth/refresh")).toHaveLength(0);
+  });
+
+  it("401 invalid-token → refresh (una vez) → reintento con el Bearer nuevo", async () => {
+    let attempts = 0;
+    routes[`GET ${dashboardPath}`] = () => {
+      attempts += 1;
+      return attempts === 1 ? problem("invalid-token", 401) : json(dashboardBody);
+    };
+    const response = await dashboard(req(`/api/bff/pantries/${PANTRY_ID}/dashboard`), ctx(PANTRY_ID));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(dashboardBody);
+    expect(backendCalls("POST", "/api/v1/auth/refresh")).toHaveLength(1);
+    const calls = backendCalls("GET", dashboardPath);
+    expect(calls).toHaveLength(2);
+    expect(calls[1]?.headers.get("Authorization")).toMatch(/^Bearer at-new-\d+$/);
+    for (const cookie of jar.sets) expect(cookie.options).toMatchObject({ httpOnly: true });
+  });
+
+  it("404 (backend sin el endpoint) pasa tal cual para que el cliente caiga a las rutas sueltas", async () => {
+    routes[`GET ${dashboardPath}`] = () => json({ detail: "Not Found" }, 404);
+    const response = await dashboard(req(`/api/bff/pantries/${PANTRY_ID}/dashboard`), ctx(PANTRY_ID));
+    expect(response.status).toBe(404);
+    expect(response.headers.get("Content-Type")).toContain("application/problem+json");
   });
 });
 

@@ -139,7 +139,12 @@ dialog.app-dialog::backdrop {
   background-color: rgb(27 28 25 / 0.45);
 }
 
-/* Slider de rango (preferencias de alerta) con tokens del tema. */
+/*
+ * Slider de rango (preferencias de alerta) con tokens del tema.
+ * El tramo sin rellenar usa `--input-border` (3.77:1 sobre `--background`,
+ * 3.97:1 sobre blanco) en vez de `--surface-high` (1.16:1), para cumplir el
+ * 3:1 de WCAG 1.4.11 (Modern Web Guidance `slider` y `color`).
+ */
 .range-input {
   appearance: none;
   -webkit-appearance: none;
@@ -155,14 +160,14 @@ dialog.app-dialog::backdrop {
     to right,
     var(--primary-container) 0%,
     var(--primary-container) var(--range-progress, 0%),
-    var(--surface-high) var(--range-progress, 0%),
-    var(--surface-high) 100%
+    var(--input-border) var(--range-progress, 0%),
+    var(--input-border) 100%
   );
 }
 .range-input::-moz-range-track {
   height: 6px;
   border-radius: 4px;
-  background: var(--surface-high);
+  background: var(--input-border);
 }
 .range-input::-moz-range-progress {
   height: 6px;

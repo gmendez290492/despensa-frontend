@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { PasswordField } from "@/components/ui/password-field";
 import { TextField } from "@/components/ui/text-field";
 import { useIsOffline } from "@/components/connection-status-pill";
+import { blockSubmitWhileOffline } from "@/features/auth/offline-submit";
 import { mapAuthError, withNext, type AuthBanner } from "@/features/auth/form-errors";
 import { useLoginMutation } from "@/features/auth/client";
 import { FORGOT_PASSWORD_PATH } from "@/lib/auth/constants";
@@ -19,7 +20,7 @@ import { loginSchema, type LoginFormValues, type LoginInput } from "@/lib/auth/s
 
 const LOGIN_FIELDS = ["email", "password"] as const;
 const OFFLINE_HINT_ID = "login-offline-hint";
-const labelClass = "text-[12.5px] tracking-wider uppercase";
+const labelClass = "text-[0.78125rem] tracking-wider uppercase";
 
 /**
  * Formulario de inicio de sesión (Stitch "Inicio de Sesión"). Lee `?next=` y
@@ -31,11 +32,12 @@ const labelClass = "text-[12.5px] tracking-wider uppercase";
  *   `"current-password"`; ambos `required` con `enterKeyHint`.
  * - Validación con Zod al enviar (`noValidate`); React Hook Form enfoca el
  *   primer campo inválido para que el lector anuncie su error.
- * - Sin conexión el envío se bloquea y se explica con texto visible.
+ * - Sin conexión el botón queda `aria-disabled` (sigue enfocable y anuncia la
+ *   pista `aria-describedby`) y `blockSubmitWhileOffline` bloquea el envío.
  *
  * @returns Tarjeta con el formulario y enlace a registro.
  *
- * @see https://developer.chrome.com/docs/modern-web-guidance — guía `autofill-sign-in-form`.
+ * @see https://developer.chrome.com/docs/modern-web-guidance — guías `autofill-sign-in-form` y `custom-button-actions`.
  */
 export function LoginForm() {
   const router = useRouter();
@@ -105,7 +107,7 @@ export function LoginForm() {
           </Alert>
         ) : null}
 
-        <form onSubmit={onSubmit} noValidate className="space-y-4" aria-label="Iniciar sesión">
+        <form onSubmit={blockSubmitWhileOffline(offline, onSubmit)} noValidate className="space-y-4" aria-label="Iniciar sesión">
           <TextField
             id="login-email"
             label="Correo electrónico"
@@ -132,7 +134,7 @@ export function LoginForm() {
             labelAction={
               <Link
                 href={FORGOT_PASSWORD_PATH}
-                className="inline-flex min-h-11 items-center text-[12.5px] font-semibold text-primary-container underline-offset-4 hover:underline focus-visible:rounded-[4px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-container"
+                className="inline-flex min-h-11 items-center text-[0.78125rem] font-semibold text-primary-container underline-offset-4 hover:underline focus-visible:rounded-[4px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-container"
               >
                 ¿Olvidaste tu contraseña?
               </Link>
@@ -152,7 +154,7 @@ export function LoginForm() {
               fullWidth
               loading={submitting}
               loadingText="Iniciando sesión…"
-              disabled={offline}
+              aria-disabled={offline || undefined}
               aria-describedby={offline ? OFFLINE_HINT_ID : undefined}
             >
               <span>Iniciar sesión</span>

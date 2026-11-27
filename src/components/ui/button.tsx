@@ -20,6 +20,7 @@ export const buttonVariants = cva(
     "transition-colors select-none",
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-container focus-visible:ring-offset-2 focus-visible:ring-offset-background",
     "disabled:cursor-not-allowed disabled:opacity-60",
+    "aria-disabled:cursor-not-allowed aria-disabled:opacity-60",
     "aria-busy:cursor-progress",
   ],
   {
@@ -34,7 +35,7 @@ export const buttonVariants = cva(
       },
       size: {
         md: "min-h-11 px-4 text-sm",
-        lg: "min-h-12 px-5 text-[15px] tracking-wide",
+        lg: "min-h-12 px-5 text-[0.9375rem] tracking-wide",
         icon: "size-11",
       },
       fullWidth: {
@@ -68,6 +69,10 @@ export interface ButtonProps
  *   sin deshabilitarlo para bloquear la validación.
  * - El spinner solo gira con `prefers-reduced-motion: no-preference`
  *   (`motion-safe:`); el texto `loadingText` comunica el estado en todo caso.
+ * - `aria-disabled="true"` se ve igual que `disabled` pero no bloquea nada:
+ *   úsalo cuando el botón deba seguir enfocable para anunciar su
+ *   `aria-describedby`, y bloquea la acción en el handler.
+ * - Tamaños de texto en `rem` para respetar la escala de texto del sistema.
  *
  * @param props - {@link ButtonProps}.
  * @returns Un `<button>` estilizado.
@@ -79,7 +84,7 @@ export interface ButtonProps
  * </Button>
  * ```
  *
- * @see https://developer.chrome.com/docs/modern-web-guidance — guías `forms` y `motion`.
+ * @see https://developer.chrome.com/docs/modern-web-guidance — guías `forms`, `motion`, `custom-button-actions` y `respect-os-text-scale`.
  */
 export function Button({
   className,

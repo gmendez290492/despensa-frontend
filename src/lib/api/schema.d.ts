@@ -442,6 +442,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pantries/{pantry_id}/dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Datos del panel de una despensa en una sola llamada
+         * @description Equivale a GET /pantries + /pantries/{id}/locations + /pantries/{id}/batches +
+         *     el `unread_count` de GET /notifications, con una sola autenticación y una sola
+         *     comprobación de membresía. Responde 403 si el usuario no es miembro.
+         */
+        get: operations["get_pantry_dashboard_api_v1_pantries__pantry_id__dashboard_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/": {
         parameters: {
             query?: never;
@@ -674,11 +696,6 @@ export interface components {
              */
             semaforo: "VENCIDO" | "CRÍTICO" | "PRECAUCIÓN" | "ÓPTIMO";
         };
-        /** HTTPValidationError */
-        HTTPValidationError: {
-            /** Detail */
-            detail?: components["schemas"]["ValidationError"][];
-        };
         /**
          * LivenessResponse
          * @description Respuesta del endpoint de vida del proceso.
@@ -804,6 +821,32 @@ export interface components {
         PantryCreateRequest: {
             /** Name */
             name: string;
+        };
+        /**
+         * PantryDashboardResponse
+         * @description Todo lo que el panel necesita para pintar una despensa en una sola llamada.
+         */
+        PantryDashboardResponse: {
+            /**
+             * Pantries
+             * @description Despensas del usuario (igual que GET /pantries), para el selector.
+             */
+            pantries: components["schemas"]["PantryResponse"][];
+            /**
+             * Locations
+             * @description Zonas de la despensa (igual que GET /pantries/{id}/locations).
+             */
+            locations: components["schemas"]["LocationResponse"][];
+            /**
+             * Batches
+             * @description Lotes disponibles en orden FEFO (igual que GET /pantries/{id}/batches).
+             */
+            batches: components["schemas"]["FoodBatchResponse"][];
+            /**
+             * Unread Notifications
+             * @description Notificaciones sin leer del usuario (unread_count de GET /notifications).
+             */
+            unread_notifications: number;
         };
         /**
          * PantryJoinRequest
@@ -1112,19 +1155,6 @@ export interface components {
              */
             created_at: string;
         };
-        /** ValidationError */
-        ValidationError: {
-            /** Location */
-            loc: (string | number)[];
-            /** Message */
-            msg: string;
-            /** Error Type */
-            type: string;
-            /** Input */
-            input?: unknown;
-            /** Context */
-            ctx?: Record<string, never>;
-        };
     };
     responses: never;
     parameters: never;
@@ -1156,13 +1186,27 @@ export interface operations {
                     "application/json": components["schemas"]["UserResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description - `validation-error`: cuerpo, ruta o query inválidos; `errors` detalla cada campo */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/validation-error";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                        /** @description Solo en `validation-error`: un elemento por campo inválido. */
+                        errors?: {
+                            loc: (string | number)[];
+                            msg: string;
+                            type?: string;
+                        }[];
+                    };
                 };
             };
         };
@@ -1192,13 +1236,44 @@ export interface operations {
                     "application/json": components["schemas"]["TokenResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description - `invalid-credentials`: Invalid Credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/invalid-credentials";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description - `validation-error`: cuerpo, ruta o query inválidos; `errors` detalla cada campo */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/validation-error";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                        /** @description Solo en `validation-error`: un elemento por campo inválido. */
+                        errors?: {
+                            loc: (string | number)[];
+                            msg: string;
+                            type?: string;
+                        }[];
+                    };
                 };
             };
         };
@@ -1228,13 +1303,44 @@ export interface operations {
                     "application/json": components["schemas"]["TokenResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description - `invalid-token`: Invalid or Expired Token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/invalid-token";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description - `validation-error`: cuerpo, ruta o query inválidos; `errors` detalla cada campo */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/validation-error";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                        /** @description Solo en `validation-error`: un elemento por campo inválido. */
+                        errors?: {
+                            loc: (string | number)[];
+                            msg: string;
+                            type?: string;
+                        }[];
+                    };
                 };
             };
         };
@@ -1259,13 +1365,44 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
+            /** @description - `invalid-token`: Invalid or Expired Token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/invalid-token";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description - `validation-error`: cuerpo, ruta o query inválidos; `errors` detalla cada campo */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/validation-error";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                        /** @description Solo en `validation-error`: un elemento por campo inválido. */
+                        errors?: {
+                            loc: (string | number)[];
+                            msg: string;
+                            type?: string;
+                        }[];
+                    };
                 };
             };
         };
@@ -1292,13 +1429,27 @@ export interface operations {
                     "application/json": components["schemas"]["MessageResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description - `validation-error`: cuerpo, ruta o query inválidos; `errors` detalla cada campo */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/validation-error";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                        /** @description Solo en `validation-error`: un elemento por campo inválido. */
+                        errors?: {
+                            loc: (string | number)[];
+                            msg: string;
+                            type?: string;
+                        }[];
+                    };
                 };
             };
         };
@@ -1323,13 +1474,27 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
+            /** @description - `validation-error`: cuerpo, ruta o query inválidos; `errors` detalla cada campo */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/validation-error";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                        /** @description Solo en `validation-error`: un elemento por campo inválido. */
+                        errors?: {
+                            loc: (string | number)[];
+                            msg: string;
+                            type?: string;
+                        }[];
+                    };
                 };
             };
         };
@@ -1352,6 +1517,26 @@ export interface operations {
                     "application/json": components["schemas"]["UserResponse"];
                 };
             };
+            /**
+             * @description - `invalid-token`: Invalid or Expired Token
+             *     - `invalid-credentials`: Invalid Credentials
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/invalid-token" | "https://despensa.api/errors/invalid-credentials";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
         };
     };
     list_pantries_api_v1_pantries_get: {
@@ -1370,6 +1555,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PantryResponse"][];
+                };
+            };
+            /**
+             * @description - `invalid-token`: Invalid or Expired Token
+             *     - `invalid-credentials`: Invalid Credentials
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/invalid-token" | "https://despensa.api/errors/invalid-credentials";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
                 };
             };
         };
@@ -1399,55 +1604,83 @@ export interface operations {
                     "application/json": components["schemas"]["PantryResponse"];
                 };
             };
-            /** @description Error de negocio o `invalid-idempotency-key` (formato de la clave). */
+            /** @description - `invalid-idempotency-key`: formato de `Idempotency-Key` inválido */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
-                        title?: string;
-                        status?: number;
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/invalid-idempotency-key";
+                        title: string;
+                        status: number;
                         detail?: string;
                         instance?: string;
                         correlation_id?: string | null;
                     };
                 };
             };
-            /** @description `idempotency-request-in-progress`: otra petición con la misma clave sigue en curso. Incluye `Retry-After`; es transitorio y se debe reintentar con la misma clave. */
+            /**
+             * @description - `invalid-token`: Invalid or Expired Token
+             *     - `invalid-credentials`: Invalid Credentials
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/invalid-token" | "https://despensa.api/errors/invalid-credentials";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description - `idempotency-request-in-progress`: otra petición con la misma clave sigue en curso; incluye `Retry-After`, es transitorio y se reintenta con la misma clave */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
-                        title?: string;
-                        status?: number;
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/idempotency-request-in-progress";
+                        title: string;
+                        status: number;
                         detail?: string;
                         instance?: string;
                         correlation_id?: string | null;
                     };
                 };
             };
-            /** @description Cuerpo inválido (application/json) o `idempotency-key-reused`: la clave ya se usó con otra petición (application/problem+json). */
+            /**
+             * @description - `idempotency-key-reused`: la clave ya se usó con otra petición (método, ruta o cuerpo)
+             *     - `validation-error`: cuerpo, ruta o query inválidos; `errors` detalla cada campo
+             */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
-                        title?: string;
-                        status?: number;
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/idempotency-key-reused" | "https://despensa.api/errors/validation-error";
+                        title: string;
+                        status: number;
                         detail?: string;
                         instance?: string;
                         correlation_id?: string | null;
+                        /** @description Solo en `validation-error`: un elemento por campo inválido. */
+                        errors?: {
+                            loc: (string | number)[];
+                            msg: string;
+                            type?: string;
+                        }[];
                     };
                 };
             };
@@ -1478,55 +1711,103 @@ export interface operations {
                     "application/json": components["schemas"]["PantryResponse"];
                 };
             };
-            /** @description Error de negocio o `invalid-idempotency-key` (formato de la clave). */
+            /** @description - `invalid-idempotency-key`: formato de `Idempotency-Key` inválido */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
-                        title?: string;
-                        status?: number;
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/invalid-idempotency-key";
+                        title: string;
+                        status: number;
                         detail?: string;
                         instance?: string;
                         correlation_id?: string | null;
                     };
                 };
             };
-            /** @description `idempotency-request-in-progress`: otra petición con la misma clave sigue en curso. Incluye `Retry-After`; es transitorio y se debe reintentar con la misma clave. */
+            /**
+             * @description - `invalid-token`: Invalid or Expired Token
+             *     - `invalid-credentials`: Invalid Credentials
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/invalid-token" | "https://despensa.api/errors/invalid-credentials";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description - `invalid-invite-code`: Invalid Invite Code */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/invalid-invite-code";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /**
+             * @description - `already-pantry-member`: Already Pantry Member
+             *     - `idempotency-request-in-progress`: otra petición con la misma clave sigue en curso; incluye `Retry-After`, es transitorio y se reintenta con la misma clave
+             */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
-                        title?: string;
-                        status?: number;
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/already-pantry-member" | "https://despensa.api/errors/idempotency-request-in-progress";
+                        title: string;
+                        status: number;
                         detail?: string;
                         instance?: string;
                         correlation_id?: string | null;
                     };
                 };
             };
-            /** @description Cuerpo inválido (application/json) o `idempotency-key-reused`: la clave ya se usó con otra petición (application/problem+json). */
+            /**
+             * @description - `idempotency-key-reused`: la clave ya se usó con otra petición (método, ruta o cuerpo)
+             *     - `validation-error`: cuerpo, ruta o query inválidos; `errors` detalla cada campo
+             */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
-                        title?: string;
-                        status?: number;
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/idempotency-key-reused" | "https://despensa.api/errors/validation-error";
+                        title: string;
+                        status: number;
                         detail?: string;
                         instance?: string;
                         correlation_id?: string | null;
+                        /** @description Solo en `validation-error`: un elemento por campo inválido. */
+                        errors?: {
+                            loc: (string | number)[];
+                            msg: string;
+                            type?: string;
+                        }[];
                     };
                 };
             };
@@ -1552,13 +1833,47 @@ export interface operations {
                     "application/json": components["schemas"]["LocationResponse"][];
                 };
             };
-            /** @description Validation Error */
+            /**
+             * @description - `invalid-token`: Invalid or Expired Token
+             *     - `invalid-credentials`: Invalid Credentials
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/invalid-token" | "https://despensa.api/errors/invalid-credentials";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description - `validation-error`: cuerpo, ruta o query inválidos; `errors` detalla cada campo */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/validation-error";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                        /** @description Solo en `validation-error`: un elemento por campo inválido. */
+                        errors?: {
+                            loc: (string | number)[];
+                            msg: string;
+                            type?: string;
+                        }[];
+                    };
                 };
             };
         };
@@ -1590,55 +1905,100 @@ export interface operations {
                     "application/json": components["schemas"]["LocationResponse"];
                 };
             };
-            /** @description Error de negocio o `invalid-idempotency-key` (formato de la clave). */
+            /** @description - `invalid-idempotency-key`: formato de `Idempotency-Key` inválido */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
-                        title?: string;
-                        status?: number;
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/invalid-idempotency-key";
+                        title: string;
+                        status: number;
                         detail?: string;
                         instance?: string;
                         correlation_id?: string | null;
                     };
                 };
             };
-            /** @description `idempotency-request-in-progress`: otra petición con la misma clave sigue en curso. Incluye `Retry-After`; es transitorio y se debe reintentar con la misma clave. */
+            /**
+             * @description - `invalid-token`: Invalid or Expired Token
+             *     - `invalid-credentials`: Invalid Credentials
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/invalid-token" | "https://despensa.api/errors/invalid-credentials";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description - `pantry-access-denied`: Pantry Access Denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/pantry-access-denied";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description - `idempotency-request-in-progress`: otra petición con la misma clave sigue en curso; incluye `Retry-After`, es transitorio y se reintenta con la misma clave */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
-                        title?: string;
-                        status?: number;
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/idempotency-request-in-progress";
+                        title: string;
+                        status: number;
                         detail?: string;
                         instance?: string;
                         correlation_id?: string | null;
                     };
                 };
             };
-            /** @description Cuerpo inválido (application/json) o `idempotency-key-reused`: la clave ya se usó con otra petición (application/problem+json). */
+            /**
+             * @description - `idempotency-key-reused`: la clave ya se usó con otra petición (método, ruta o cuerpo)
+             *     - `validation-error`: cuerpo, ruta o query inválidos; `errors` detalla cada campo
+             */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
-                        title?: string;
-                        status?: number;
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/idempotency-key-reused" | "https://despensa.api/errors/validation-error";
+                        title: string;
+                        status: number;
                         detail?: string;
                         instance?: string;
                         correlation_id?: string | null;
+                        /** @description Solo en `validation-error`: un elemento por campo inválido. */
+                        errors?: {
+                            loc: (string | number)[];
+                            msg: string;
+                            type?: string;
+                        }[];
                     };
                 };
             };
@@ -1686,13 +2046,27 @@ export interface operations {
                     "application/json": components["schemas"]["ProductResponse"][];
                 };
             };
-            /** @description Validation Error */
+            /** @description - `validation-error`: cuerpo, ruta o query inválidos; `errors` detalla cada campo */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/validation-error";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                        /** @description Solo en `validation-error`: un elemento por campo inválido. */
+                        errors?: {
+                            loc: (string | number)[];
+                            msg: string;
+                            type?: string;
+                        }[];
+                    };
                 };
             };
         };
@@ -1722,55 +2096,103 @@ export interface operations {
                     "application/json": components["schemas"]["ProductResponse"];
                 };
             };
-            /** @description Error de negocio o `invalid-idempotency-key` (formato de la clave). */
+            /**
+             * @description - `unit-not-found`: Unit Not Found
+             *     - `invalid-idempotency-key`: formato de `Idempotency-Key` inválido
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
-                        title?: string;
-                        status?: number;
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/unit-not-found" | "https://despensa.api/errors/invalid-idempotency-key";
+                        title: string;
+                        status: number;
                         detail?: string;
                         instance?: string;
                         correlation_id?: string | null;
                     };
                 };
             };
-            /** @description `idempotency-request-in-progress`: otra petición con la misma clave sigue en curso. Incluye `Retry-After`; es transitorio y se debe reintentar con la misma clave. */
+            /**
+             * @description - `invalid-token`: Invalid or Expired Token
+             *     - `invalid-credentials`: Invalid Credentials
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/invalid-token" | "https://despensa.api/errors/invalid-credentials";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description - `product-not-found`: Product Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/product-not-found";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description - `idempotency-request-in-progress`: otra petición con la misma clave sigue en curso; incluye `Retry-After`, es transitorio y se reintenta con la misma clave */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
-                        title?: string;
-                        status?: number;
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/idempotency-request-in-progress";
+                        title: string;
+                        status: number;
                         detail?: string;
                         instance?: string;
                         correlation_id?: string | null;
                     };
                 };
             };
-            /** @description Cuerpo inválido (application/json) o `idempotency-key-reused`: la clave ya se usó con otra petición (application/problem+json). */
+            /**
+             * @description - `idempotency-key-reused`: la clave ya se usó con otra petición (método, ruta o cuerpo)
+             *     - `validation-error`: cuerpo, ruta o query inválidos; `errors` detalla cada campo
+             */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
-                        title?: string;
-                        status?: number;
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/idempotency-key-reused" | "https://despensa.api/errors/validation-error";
+                        title: string;
+                        status: number;
                         detail?: string;
                         instance?: string;
                         correlation_id?: string | null;
+                        /** @description Solo en `validation-error`: un elemento por campo inválido. */
+                        errors?: {
+                            loc: (string | number)[];
+                            msg: string;
+                            type?: string;
+                        }[];
                     };
                 };
             };
@@ -1796,13 +2218,47 @@ export interface operations {
                     "application/json": components["schemas"]["FoodBatchResponse"][];
                 };
             };
-            /** @description Validation Error */
+            /**
+             * @description - `invalid-token`: Invalid or Expired Token
+             *     - `invalid-credentials`: Invalid Credentials
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/invalid-token" | "https://despensa.api/errors/invalid-credentials";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description - `validation-error`: cuerpo, ruta o query inválidos; `errors` detalla cada campo */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/validation-error";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                        /** @description Solo en `validation-error`: un elemento por campo inválido. */
+                        errors?: {
+                            loc: (string | number)[];
+                            msg: string;
+                            type?: string;
+                        }[];
+                    };
                 };
             };
         };
@@ -1834,55 +2290,123 @@ export interface operations {
                     "application/json": components["schemas"]["FoodBatchResponse"];
                 };
             };
-            /** @description Error de negocio o `invalid-idempotency-key` (formato de la clave). */
+            /**
+             * @description - `unit-not-found`: Unit Not Found
+             *     - `invalid-idempotency-key`: formato de `Idempotency-Key` inválido
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
-                        title?: string;
-                        status?: number;
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/unit-not-found" | "https://despensa.api/errors/invalid-idempotency-key";
+                        title: string;
+                        status: number;
                         detail?: string;
                         instance?: string;
                         correlation_id?: string | null;
                     };
                 };
             };
-            /** @description `idempotency-request-in-progress`: otra petición con la misma clave sigue en curso. Incluye `Retry-After`; es transitorio y se debe reintentar con la misma clave. */
+            /**
+             * @description - `invalid-token`: Invalid or Expired Token
+             *     - `invalid-credentials`: Invalid Credentials
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/invalid-token" | "https://despensa.api/errors/invalid-credentials";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description - `pantry-access-denied`: Pantry Access Denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/pantry-access-denied";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /**
+             * @description - `location-not-found`: Location Not Found
+             *     - `product-not-found`: Product Not Found
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/location-not-found" | "https://despensa.api/errors/product-not-found";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description - `idempotency-request-in-progress`: otra petición con la misma clave sigue en curso; incluye `Retry-After`, es transitorio y se reintenta con la misma clave */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
-                        title?: string;
-                        status?: number;
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/idempotency-request-in-progress";
+                        title: string;
+                        status: number;
                         detail?: string;
                         instance?: string;
                         correlation_id?: string | null;
                     };
                 };
             };
-            /** @description Cuerpo inválido (application/json) o `idempotency-key-reused`: la clave ya se usó con otra petición (application/problem+json). */
+            /**
+             * @description - `idempotency-key-reused`: la clave ya se usó con otra petición (método, ruta o cuerpo)
+             *     - `validation-error`: cuerpo, ruta o query inválidos; `errors` detalla cada campo
+             */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
-                        title?: string;
-                        status?: number;
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/idempotency-key-reused" | "https://despensa.api/errors/validation-error";
+                        title: string;
+                        status: number;
                         detail?: string;
                         instance?: string;
                         correlation_id?: string | null;
+                        /** @description Solo en `validation-error`: un elemento por campo inválido. */
+                        errors?: {
+                            loc: (string | number)[];
+                            msg: string;
+                            type?: string;
+                        }[];
                     };
                 };
             };
@@ -1915,55 +2439,103 @@ export interface operations {
                     "application/json": components["schemas"]["ConsumeResultResponse"];
                 };
             };
-            /** @description Error de negocio o `invalid-idempotency-key` (formato de la clave). */
+            /**
+             * @description - `insufficient-stock`: Insufficient Stock
+             *     - `invalid-idempotency-key`: formato de `Idempotency-Key` inválido
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
-                        title?: string;
-                        status?: number;
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/insufficient-stock" | "https://despensa.api/errors/invalid-idempotency-key";
+                        title: string;
+                        status: number;
                         detail?: string;
                         instance?: string;
                         correlation_id?: string | null;
                     };
                 };
             };
-            /** @description `idempotency-request-in-progress`: otra petición con la misma clave sigue en curso. Incluye `Retry-After`; es transitorio y se debe reintentar con la misma clave. */
+            /**
+             * @description - `invalid-token`: Invalid or Expired Token
+             *     - `invalid-credentials`: Invalid Credentials
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/invalid-token" | "https://despensa.api/errors/invalid-credentials";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description - `pantry-access-denied`: Pantry Access Denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/pantry-access-denied";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description - `idempotency-request-in-progress`: otra petición con la misma clave sigue en curso; incluye `Retry-After`, es transitorio y se reintenta con la misma clave */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
-                        title?: string;
-                        status?: number;
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/idempotency-request-in-progress";
+                        title: string;
+                        status: number;
                         detail?: string;
                         instance?: string;
                         correlation_id?: string | null;
                     };
                 };
             };
-            /** @description Cuerpo inválido (application/json) o `idempotency-key-reused`: la clave ya se usó con otra petición (application/problem+json). */
+            /**
+             * @description - `idempotency-key-reused`: la clave ya se usó con otra petición (método, ruta o cuerpo)
+             *     - `validation-error`: cuerpo, ruta o query inválidos; `errors` detalla cada campo
+             */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
-                        title?: string;
-                        status?: number;
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/idempotency-key-reused" | "https://despensa.api/errors/validation-error";
+                        title: string;
+                        status: number;
                         detail?: string;
                         instance?: string;
                         correlation_id?: string | null;
+                        /** @description Solo en `validation-error`: un elemento por campo inválido. */
+                        errors?: {
+                            loc: (string | number)[];
+                            msg: string;
+                            type?: string;
+                        }[];
                     };
                 };
             };
@@ -1994,13 +2566,47 @@ export interface operations {
                     "application/json": components["schemas"]["NotificationListResponse"];
                 };
             };
-            /** @description Validation Error */
+            /**
+             * @description - `invalid-token`: Invalid or Expired Token
+             *     - `invalid-credentials`: Invalid Credentials
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/invalid-token" | "https://despensa.api/errors/invalid-credentials";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description - `validation-error`: cuerpo, ruta o query inválidos; `errors` detalla cada campo */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/validation-error";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                        /** @description Solo en `validation-error`: un elemento por campo inválido. */
+                        errors?: {
+                            loc: (string | number)[];
+                            msg: string;
+                            type?: string;
+                        }[];
+                    };
                 };
             };
         };
@@ -2025,13 +2631,47 @@ export interface operations {
                     "application/json": components["schemas"]["NotificationMarkReadResponse"];
                 };
             };
-            /** @description Validation Error */
+            /**
+             * @description - `invalid-token`: Invalid or Expired Token
+             *     - `invalid-credentials`: Invalid Credentials
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/invalid-token" | "https://despensa.api/errors/invalid-credentials";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description - `validation-error`: cuerpo, ruta o query inválidos; `errors` detalla cada campo */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/validation-error";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                        /** @description Solo en `validation-error`: un elemento por campo inválido. */
+                        errors?: {
+                            loc: (string | number)[];
+                            msg: string;
+                            type?: string;
+                        }[];
+                    };
                 };
             };
         };
@@ -2054,6 +2694,26 @@ export interface operations {
                     "application/json": components["schemas"]["NotificationMarkReadResponse"];
                 };
             };
+            /**
+             * @description - `invalid-token`: Invalid or Expired Token
+             *     - `invalid-credentials`: Invalid Credentials
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/invalid-token" | "https://despensa.api/errors/invalid-credentials";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
         };
     };
     trigger_expiration_scan_api_v1_notifications_scan_post: {
@@ -2072,6 +2732,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExpirationScanResponse"];
+                };
+            };
+            /**
+             * @description - `invalid-token`: Invalid or Expired Token
+             *     - `invalid-credentials`: Invalid Credentials
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/invalid-token" | "https://despensa.api/errors/invalid-credentials";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
                 };
             };
         };
@@ -2097,13 +2777,27 @@ export interface operations {
                     "application/json": components["schemas"]["RecipeListResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description - `validation-error`: cuerpo, ruta o query inválidos; `errors` detalla cada campo */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/validation-error";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                        /** @description Solo en `validation-error`: un elemento por campo inválido. */
+                        errors?: {
+                            loc: (string | number)[];
+                            msg: string;
+                            type?: string;
+                        }[];
+                    };
                 };
             };
         };
@@ -2128,13 +2822,47 @@ export interface operations {
                     "application/json": components["schemas"]["RecommendationResponse"];
                 };
             };
-            /** @description Validation Error */
+            /**
+             * @description - `invalid-token`: Invalid or Expired Token
+             *     - `invalid-credentials`: Invalid Credentials
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/invalid-token" | "https://despensa.api/errors/invalid-credentials";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description - `validation-error`: cuerpo, ruta o query inválidos; `errors` detalla cada campo */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/validation-error";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                        /** @description Solo en `validation-error`: un elemento por campo inválido. */
+                        errors?: {
+                            loc: (string | number)[];
+                            msg: string;
+                            type?: string;
+                        }[];
+                    };
                 };
             };
         };
@@ -2159,13 +2887,109 @@ export interface operations {
                     "application/json": components["schemas"]["RecipeRead"];
                 };
             };
-            /** @description Validation Error */
+            /** @description - `validation-error`: cuerpo, ruta o query inválidos; `errors` detalla cada campo */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/validation-error";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                        /** @description Solo en `validation-error`: un elemento por campo inválido. */
+                        errors?: {
+                            loc: (string | number)[];
+                            msg: string;
+                            type?: string;
+                        }[];
+                    };
+                };
+            };
+        };
+    };
+    get_pantry_dashboard_api_v1_pantries__pantry_id__dashboard_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pantry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PantryDashboardResponse"];
+                };
+            };
+            /**
+             * @description - `invalid-token`: Invalid or Expired Token
+             *     - `invalid-credentials`: Invalid Credentials
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/invalid-token" | "https://despensa.api/errors/invalid-credentials";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description - `pantry-access-denied`: Pantry Access Denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/pantry-access-denied";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description - `validation-error`: cuerpo, ruta o query inválidos; `errors` detalla cada campo */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type: "https://despensa.api/errors/validation-error";
+                        title: string;
+                        status: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                        /** @description Solo en `validation-error`: un elemento por campo inválido. */
+                        errors?: {
+                            loc: (string | number)[];
+                            msg: string;
+                            type?: string;
+                        }[];
+                    };
                 };
             };
         };

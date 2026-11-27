@@ -4,6 +4,7 @@ import type {
   ConsumePayload,
   CreateLocationInput,
   CreatePantryInput,
+  CreateProductInput,
   JoinPantryInput,
 } from "@/lib/pantry/schemas";
 
@@ -24,6 +25,21 @@ export type Semaforo = FoodBatchResponse["semaforo"];
 export type ConsumeResultResponse = components["schemas"]["ConsumeResultResponse"];
 /** Listado paginado de notificaciones. */
 export type NotificationListResponse = components["schemas"]["NotificationListResponse"];
+/** Producto del catálogo global. */
+export type ProductResponse = components["schemas"]["ProductResponse"];
+/**
+ * Respuesta agregada del panel (`GET /pantries/{id}/dashboard`): hogares,
+ * ubicaciones, lotes FEFO y `unread_notifications`, idénticos a sus endpoints
+ * sueltos.
+ */
+export type PantryDashboardResponse = components["schemas"]["PantryDashboardResponse"];
+
+/** Cabecera de idempotencia que el BFF valida y reenvía a FastAPI. */
+export const IDEMPOTENCY_HEADER = "Idempotency-Key";
+
+function idempotencyHeaders(idempotencyKey: string): Record<string, string> {
+  return { [IDEMPOTENCY_HEADER]: idempotencyKey };
+}
 
 /** Rutas del BFF del dominio `pantry`. */
 export const BFF_PANTRY_ROUTES = {
@@ -31,7 +47,9 @@ export const BFF_PANTRY_ROUTES = {
   join: "/api/bff/pantries/join",
   locations: (pantryId: string) => `/api/bff/pantries/${encodeURIComponent(pantryId)}/locations`,
   batches: (pantryId: string) => `/api/bff/pantries/${encodeURIComponent(pantryId)}/batches`,
+  dashboard: (pantryId: string) => `/api/bff/pantries/${encodeURIComponent(pantryId)}/dashboard`,
   consume: (pantryId: string) => `/api/bff/pantries/${encodeURIComponent(pantryId)}/consume`,
+  products: "/api/bff/products",
   notifications: "/api/bff/notifications",
 } as const;
 
@@ -47,43 +65,132 @@ export const pantryKeys = {
   detail: (pantryId: string) => ["pantries", pantryId] as const,
   locations: (pantryId: string) => ["pantries", pantryId, "locations"] as const,
   batches: (pantryId: string) => ["pantries", pantryId, "batches"] as const,
+  /**
+   * Carga agregada del panel. Solo arranca el panel y **siembra** las claves
+   * sueltas (`list`, `locations`, `batches`, `unreadNotifications`); la UI lee
+   * siempre de esas. Cuelga de `detail(id)`: invalidar el hogar la incluye.
+   */
+  dashboard: (pantryId: string) => ["pantries", pantryId, "dashboard"] as const,
   unreadNotifications: () => ["notifications", "unread"] as const,
 };
 
-/** `GET /api/bff/pantries`. @throws {ProblemDetailError} */
+/** Query keys del catálogo global de productos (no cuelga de un hogar). */
+export const productKeys = {
+  all: ["products"] as const,
+};
+
+/**
+ * `GET /api/bff/pantries`.
+ *
+ * @returns Hogares del usuario.
+ * @throws {ProblemDetailError} Red, `401`, 5xx.
+ */
 export function fetchPantries(): Promise<PantryResponse[]> {
   return bffJson<PantryResponse[]>(BFF_PANTRY_ROUTES.pantries);
 }
 
-/** `POST /api/bff/pantries`. @throws {ProblemDetailError} */
-export function createPantryRequest(input: CreatePantryInput): Promise<PantryResponse> {
-  return bffJson<PantryResponse>(BFF_PANTRY_ROUTES.pantries, { method: "POST", json: input });
+/**
+ * `POST /api/bff/pantries` con `Idempotency-Key`.
+ *
+ * @param input - Nombre del hogar (ya validado con `createPantrySchema`).
+ * @param idempotencyKey - Clave de la intención del usuario (estable entre reintentos del mismo cuerpo).
+ * @returns El hogar creado (FastAPI crea además la ubicación inicial).
+ * @throws {ProblemDetailError} `idempotency-request-in-progress`, red, 5xx…
+ */
+export function createPantryRequest(input: CreatePantryInput, idempotencyKey: string): Promise<PantryResponse> {
+  return bffJson<PantryResponse>(BFF_PANTRY_ROUTES.pantries, {
+    method: "POST",
+    json: input,
+    headers: idempotencyHeaders(idempotencyKey),
+  });
 }
 
-/** `POST /api/bff/pantries/join`. @throws {ProblemDetailError} `invalid-invite-code`, `already-pantry-member`. */
-export function joinPantryRequest(input: JoinPantryInput): Promise<PantryResponse> {
-  return bffJson<PantryResponse>(BFF_PANTRY_ROUTES.join, { method: "POST", json: input });
+/**
+ * `POST /api/bff/pantries/join` con `Idempotency-Key`.
+ *
+ * @param input - Código de invitación (ya validado con `joinPantrySchema`).
+ * @param idempotencyKey - Clave de la intención del usuario (estable entre reintentos del mismo cuerpo).
+ * @returns El hogar al que se unió el usuario.
+ * @throws {ProblemDetailError} `invalid-invite-code`, `already-pantry-member`, `idempotency-request-in-progress`…
+ */
+export function joinPantryRequest(input: JoinPantryInput, idempotencyKey: string): Promise<PantryResponse> {
+  return bffJson<PantryResponse>(BFF_PANTRY_ROUTES.join, {
+    method: "POST",
+    json: input,
+    headers: idempotencyHeaders(idempotencyKey),
+  });
 }
 
-/** `GET /api/bff/pantries/{id}/locations`. @throws {ProblemDetailError} `pantry-access-denied`. */
+/**
+ * `GET /api/bff/pantries/{id}/locations`.
+ *
+ * @param pantryId - Hogar.
+ * @returns Ubicaciones del hogar.
+ * @throws {ProblemDetailError} `pantry-access-denied`, red, 5xx.
+ */
 export function fetchLocations(pantryId: string): Promise<LocationResponse[]> {
   return bffJson<LocationResponse[]>(BFF_PANTRY_ROUTES.locations(pantryId));
 }
 
-/** `POST /api/bff/pantries/{id}/locations`. @throws {ProblemDetailError} */
+/**
+ * `POST /api/bff/pantries/{id}/locations` con `Idempotency-Key`.
+ *
+ * @param pantryId - Hogar.
+ * @param input - Nombre y descripción (ya validados con `createLocationSchema`).
+ * @param idempotencyKey - Clave de la intención del usuario (estable entre reintentos del mismo cuerpo).
+ * @returns La ubicación creada.
+ * @throws {ProblemDetailError} `pantry-access-denied`, `idempotency-request-in-progress`…
+ */
 export function createLocationRequest(
   pantryId: string,
   input: CreateLocationInput,
+  idempotencyKey: string,
 ): Promise<LocationResponse> {
   return bffJson<LocationResponse>(BFF_PANTRY_ROUTES.locations(pantryId), {
     method: "POST",
     json: input,
+    headers: idempotencyHeaders(idempotencyKey),
   });
 }
 
-/** `GET /api/bff/pantries/{id}/batches` (orden FEFO). @throws {ProblemDetailError} `pantry-access-denied`. */
+/**
+ * `POST /api/bff/products` con `Idempotency-Key`.
+ *
+ * @param input - Producto (ya validado con `createProductSchema`).
+ * @param idempotencyKey - Clave de la intención del usuario (estable entre reintentos del mismo cuerpo).
+ * @returns El producto creado.
+ * @throws {ProblemDetailError} `unit-not-found`, `idempotency-request-in-progress`, red, 5xx…
+ */
+export function createProductRequest(input: CreateProductInput, idempotencyKey: string): Promise<ProductResponse> {
+  return bffJson<ProductResponse>(BFF_PANTRY_ROUTES.products, {
+    method: "POST",
+    json: input,
+    headers: idempotencyHeaders(idempotencyKey),
+  });
+}
+
+/**
+ * `GET /api/bff/pantries/{id}/batches` (orden FEFO).
+ *
+ * @param pantryId - Hogar.
+ * @returns Lotes con semáforo, en orden FEFO.
+ * @throws {ProblemDetailError} `pantry-access-denied`, red, 5xx.
+ */
 export function fetchBatches(pantryId: string): Promise<FoodBatchResponse[]> {
   return bffJson<FoodBatchResponse[]>(BFF_PANTRY_ROUTES.batches(pantryId));
+}
+
+/**
+ * `GET /api/bff/pantries/{id}/dashboard`: hogares, ubicaciones, lotes FEFO y
+ * número de alertas sin leer en una sola petición.
+ *
+ * @param pantryId - Hogar.
+ * @returns {@link PantryDashboardResponse}.
+ * @throws {ProblemDetailError} `403 pantry-access-denied` (no miembro o el
+ *   hogar no existe), `404` si el backend aún no tiene el endpoint, red, 5xx.
+ */
+export function fetchPantryDashboard(pantryId: string): Promise<PantryDashboardResponse> {
+  return bffJson<PantryDashboardResponse>(BFF_PANTRY_ROUTES.dashboard(pantryId));
 }
 
 /**
@@ -103,11 +210,16 @@ export function consumeRequest(
   return bffJson<ConsumeResultResponse>(BFF_PANTRY_ROUTES.consume(pantryId), {
     method: "POST",
     json: payload,
-    headers: { "Idempotency-Key": idempotencyKey },
+    headers: idempotencyHeaders(idempotencyKey),
   });
 }
 
-/** `GET /api/bff/notifications?unread_only=true&limit=1` (solo interesa `unread_count`). */
+/**
+ * `GET /api/bff/notifications?unread_only=true&limit=1` (solo interesa `unread_count`).
+ *
+ * @returns Listado con `unread_count`.
+ * @throws {ProblemDetailError} Red, `401`, 5xx.
+ */
 export function fetchUnreadNotifications(): Promise<NotificationListResponse> {
   return bffJson<NotificationListResponse>(
     `${BFF_PANTRY_ROUTES.notifications}?unread_only=true&limit=1`,
