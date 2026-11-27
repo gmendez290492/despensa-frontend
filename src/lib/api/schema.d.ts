@@ -1399,15 +1399,15 @@ export interface operations {
                     "application/json": components["schemas"]["PantryResponse"];
                 };
             };
-            /** @description Error de negocio o `invalid-idempotency-key` (formato de la clave). */
+            /** @description - `invalid-idempotency-key`: formato de `Idempotency-Key` inválido */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
+                        /** @enum {string} */
+                        type?: "https://despensa.api/errors/invalid-idempotency-key";
                         title?: string;
                         status?: number;
                         detail?: string;
@@ -1416,15 +1416,15 @@ export interface operations {
                     };
                 };
             };
-            /** @description `idempotency-request-in-progress`: otra petición con la misma clave sigue en curso. Incluye `Retry-After`; es transitorio y se debe reintentar con la misma clave. */
+            /** @description - `idempotency-request-in-progress`: otra petición con la misma clave sigue en curso; incluye `Retry-After`, es transitorio y se reintenta con la misma clave */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
+                        /** @enum {string} */
+                        type?: "https://despensa.api/errors/idempotency-request-in-progress";
                         title?: string;
                         status?: number;
                         detail?: string;
@@ -1433,7 +1433,10 @@ export interface operations {
                     };
                 };
             };
-            /** @description Cuerpo inválido (application/json) o `idempotency-key-reused`: la clave ya se usó con otra petición (application/problem+json). */
+            /**
+             * @description - Cuerpo inválido (validación, `application/json`)
+             *     - `idempotency-key-reused`: la clave ya se usó con otra petición (método, ruta o cuerpo)
+             */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1441,8 +1444,8 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
+                        /** @enum {string} */
+                        type?: "https://despensa.api/errors/idempotency-key-reused";
                         title?: string;
                         status?: number;
                         detail?: string;
@@ -1478,15 +1481,15 @@ export interface operations {
                     "application/json": components["schemas"]["PantryResponse"];
                 };
             };
-            /** @description Error de negocio o `invalid-idempotency-key` (formato de la clave). */
+            /** @description - `invalid-idempotency-key`: formato de `Idempotency-Key` inválido */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
+                        /** @enum {string} */
+                        type?: "https://despensa.api/errors/invalid-idempotency-key";
                         title?: string;
                         status?: number;
                         detail?: string;
@@ -1495,15 +1498,35 @@ export interface operations {
                     };
                 };
             };
-            /** @description `idempotency-request-in-progress`: otra petición con la misma clave sigue en curso. Incluye `Retry-After`; es transitorio y se debe reintentar con la misma clave. */
+            /** @description - `invalid-invite-code`: Invalid Invite Code */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type?: "https://despensa.api/errors/invalid-invite-code";
+                        title?: string;
+                        status?: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /**
+             * @description - `already-pantry-member`: Already Pantry Member
+             *     - `idempotency-request-in-progress`: otra petición con la misma clave sigue en curso; incluye `Retry-After`, es transitorio y se reintenta con la misma clave
+             */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
+                        /** @enum {string} */
+                        type?: "https://despensa.api/errors/already-pantry-member" | "https://despensa.api/errors/idempotency-request-in-progress";
                         title?: string;
                         status?: number;
                         detail?: string;
@@ -1512,7 +1535,10 @@ export interface operations {
                     };
                 };
             };
-            /** @description Cuerpo inválido (application/json) o `idempotency-key-reused`: la clave ya se usó con otra petición (application/problem+json). */
+            /**
+             * @description - Cuerpo inválido (validación, `application/json`)
+             *     - `idempotency-key-reused`: la clave ya se usó con otra petición (método, ruta o cuerpo)
+             */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1520,8 +1546,8 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
+                        /** @enum {string} */
+                        type?: "https://despensa.api/errors/idempotency-key-reused";
                         title?: string;
                         status?: number;
                         detail?: string;
@@ -1590,15 +1616,15 @@ export interface operations {
                     "application/json": components["schemas"]["LocationResponse"];
                 };
             };
-            /** @description Error de negocio o `invalid-idempotency-key` (formato de la clave). */
+            /** @description - `invalid-idempotency-key`: formato de `Idempotency-Key` inválido */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
+                        /** @enum {string} */
+                        type?: "https://despensa.api/errors/invalid-idempotency-key";
                         title?: string;
                         status?: number;
                         detail?: string;
@@ -1607,15 +1633,32 @@ export interface operations {
                     };
                 };
             };
-            /** @description `idempotency-request-in-progress`: otra petición con la misma clave sigue en curso. Incluye `Retry-After`; es transitorio y se debe reintentar con la misma clave. */
+            /** @description - `pantry-access-denied`: Pantry Access Denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type?: "https://despensa.api/errors/pantry-access-denied";
+                        title?: string;
+                        status?: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description - `idempotency-request-in-progress`: otra petición con la misma clave sigue en curso; incluye `Retry-After`, es transitorio y se reintenta con la misma clave */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
+                        /** @enum {string} */
+                        type?: "https://despensa.api/errors/idempotency-request-in-progress";
                         title?: string;
                         status?: number;
                         detail?: string;
@@ -1624,7 +1667,10 @@ export interface operations {
                     };
                 };
             };
-            /** @description Cuerpo inválido (application/json) o `idempotency-key-reused`: la clave ya se usó con otra petición (application/problem+json). */
+            /**
+             * @description - Cuerpo inválido (validación, `application/json`)
+             *     - `idempotency-key-reused`: la clave ya se usó con otra petición (método, ruta o cuerpo)
+             */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1632,8 +1678,8 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
+                        /** @enum {string} */
+                        type?: "https://despensa.api/errors/idempotency-key-reused";
                         title?: string;
                         status?: number;
                         detail?: string;
@@ -1722,15 +1768,18 @@ export interface operations {
                     "application/json": components["schemas"]["ProductResponse"];
                 };
             };
-            /** @description Error de negocio o `invalid-idempotency-key` (formato de la clave). */
+            /**
+             * @description - `unit-not-found`: Unit Not Found
+             *     - `invalid-idempotency-key`: formato de `Idempotency-Key` inválido
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
+                        /** @enum {string} */
+                        type?: "https://despensa.api/errors/unit-not-found" | "https://despensa.api/errors/invalid-idempotency-key";
                         title?: string;
                         status?: number;
                         detail?: string;
@@ -1739,15 +1788,32 @@ export interface operations {
                     };
                 };
             };
-            /** @description `idempotency-request-in-progress`: otra petición con la misma clave sigue en curso. Incluye `Retry-After`; es transitorio y se debe reintentar con la misma clave. */
+            /** @description - `product-not-found`: Product Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type?: "https://despensa.api/errors/product-not-found";
+                        title?: string;
+                        status?: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description - `idempotency-request-in-progress`: otra petición con la misma clave sigue en curso; incluye `Retry-After`, es transitorio y se reintenta con la misma clave */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
+                        /** @enum {string} */
+                        type?: "https://despensa.api/errors/idempotency-request-in-progress";
                         title?: string;
                         status?: number;
                         detail?: string;
@@ -1756,7 +1822,10 @@ export interface operations {
                     };
                 };
             };
-            /** @description Cuerpo inválido (application/json) o `idempotency-key-reused`: la clave ya se usó con otra petición (application/problem+json). */
+            /**
+             * @description - Cuerpo inválido (validación, `application/json`)
+             *     - `idempotency-key-reused`: la clave ya se usó con otra petición (método, ruta o cuerpo)
+             */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1764,8 +1833,8 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
+                        /** @enum {string} */
+                        type?: "https://despensa.api/errors/idempotency-key-reused";
                         title?: string;
                         status?: number;
                         detail?: string;
@@ -1834,15 +1903,18 @@ export interface operations {
                     "application/json": components["schemas"]["FoodBatchResponse"];
                 };
             };
-            /** @description Error de negocio o `invalid-idempotency-key` (formato de la clave). */
+            /**
+             * @description - `unit-not-found`: Unit Not Found
+             *     - `invalid-idempotency-key`: formato de `Idempotency-Key` inválido
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
+                        /** @enum {string} */
+                        type?: "https://despensa.api/errors/unit-not-found" | "https://despensa.api/errors/invalid-idempotency-key";
                         title?: string;
                         status?: number;
                         detail?: string;
@@ -1851,15 +1923,52 @@ export interface operations {
                     };
                 };
             };
-            /** @description `idempotency-request-in-progress`: otra petición con la misma clave sigue en curso. Incluye `Retry-After`; es transitorio y se debe reintentar con la misma clave. */
+            /** @description - `pantry-access-denied`: Pantry Access Denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type?: "https://despensa.api/errors/pantry-access-denied";
+                        title?: string;
+                        status?: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /**
+             * @description - `location-not-found`: Location Not Found
+             *     - `product-not-found`: Product Not Found
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type?: "https://despensa.api/errors/location-not-found" | "https://despensa.api/errors/product-not-found";
+                        title?: string;
+                        status?: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description - `idempotency-request-in-progress`: otra petición con la misma clave sigue en curso; incluye `Retry-After`, es transitorio y se reintenta con la misma clave */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
+                        /** @enum {string} */
+                        type?: "https://despensa.api/errors/idempotency-request-in-progress";
                         title?: string;
                         status?: number;
                         detail?: string;
@@ -1868,7 +1977,10 @@ export interface operations {
                     };
                 };
             };
-            /** @description Cuerpo inválido (application/json) o `idempotency-key-reused`: la clave ya se usó con otra petición (application/problem+json). */
+            /**
+             * @description - Cuerpo inválido (validación, `application/json`)
+             *     - `idempotency-key-reused`: la clave ya se usó con otra petición (método, ruta o cuerpo)
+             */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1876,8 +1988,8 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
+                        /** @enum {string} */
+                        type?: "https://despensa.api/errors/idempotency-key-reused";
                         title?: string;
                         status?: number;
                         detail?: string;
@@ -1915,15 +2027,18 @@ export interface operations {
                     "application/json": components["schemas"]["ConsumeResultResponse"];
                 };
             };
-            /** @description Error de negocio o `invalid-idempotency-key` (formato de la clave). */
+            /**
+             * @description - `insufficient-stock`: Insufficient Stock
+             *     - `invalid-idempotency-key`: formato de `Idempotency-Key` inválido
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
+                        /** @enum {string} */
+                        type?: "https://despensa.api/errors/insufficient-stock" | "https://despensa.api/errors/invalid-idempotency-key";
                         title?: string;
                         status?: number;
                         detail?: string;
@@ -1932,15 +2047,32 @@ export interface operations {
                     };
                 };
             };
-            /** @description `idempotency-request-in-progress`: otra petición con la misma clave sigue en curso. Incluye `Retry-After`; es transitorio y se debe reintentar con la misma clave. */
+            /** @description - `pantry-access-denied`: Pantry Access Denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        /** @enum {string} */
+                        type?: "https://despensa.api/errors/pantry-access-denied";
+                        title?: string;
+                        status?: number;
+                        detail?: string;
+                        instance?: string;
+                        correlation_id?: string | null;
+                    };
+                };
+            };
+            /** @description - `idempotency-request-in-progress`: otra petición con la misma clave sigue en curso; incluye `Retry-After`, es transitorio y se reintenta con la misma clave */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
+                        /** @enum {string} */
+                        type?: "https://despensa.api/errors/idempotency-request-in-progress";
                         title?: string;
                         status?: number;
                         detail?: string;
@@ -1949,7 +2081,10 @@ export interface operations {
                     };
                 };
             };
-            /** @description Cuerpo inválido (application/json) o `idempotency-key-reused`: la clave ya se usó con otra petición (application/problem+json). */
+            /**
+             * @description - Cuerpo inválido (validación, `application/json`)
+             *     - `idempotency-key-reused`: la clave ya se usó con otra petición (método, ruta o cuerpo)
+             */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1957,8 +2092,8 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                     "application/problem+json": {
-                        /** Format: uri */
-                        type?: string;
+                        /** @enum {string} */
+                        type?: "https://despensa.api/errors/idempotency-key-reused";
                         title?: string;
                         status?: number;
                         detail?: string;
