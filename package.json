@@ -11,7 +11,9 @@
     "generate:api": "openapi-typescript ./docs/openapi.json -o ./src/lib/api/schema.d.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:security": "playwright test tests/e2e/security",
+    "test:stress": "node scripts/run-k6.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^7.0.9",
@@ -52,6 +54,7 @@
     "esbuild": "^0.28.2",
     "eslint": "^9",
     "eslint-config-next": "16.4.6",
+    "fake-indexeddb": "^6.2.8",
     "jsdom": "^26.1.0",
     "openapi-typescript": "^7.13.0",
     "tailwindcss": "4.3.3",

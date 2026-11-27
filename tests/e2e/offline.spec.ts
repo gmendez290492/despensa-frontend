@@ -68,7 +68,7 @@ test("al reconectar, el submit de /login se rehabilita y el login funciona", asy
 
   await submit.click();
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("heading", { name: "Hola, QA Offline" })).toBeVisible();
+  await expect(page.getByText("Hola, QA", { exact: true })).toBeVisible();
 });
 
 test("sin red, una ruta protegida muestra el fallback /offline y nunca HTML cacheado", async ({

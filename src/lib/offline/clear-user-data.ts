@@ -37,6 +37,25 @@ function resolveCacheStorage(
 }
 
 /**
+ * Cuenta las filas de la outbox que se perderían al cerrar sesión (cualquier
+ * estado: `pending`, `syncing`, `conflict` o `failed`; todas se borran en
+ * {@link clearUserOfflineData}). Nunca lanza: sin IndexedDB devuelve `0`.
+ *
+ * @param options.db - Base inyectable (tests); por defecto `offlineDb`.
+ * @returns Número de cambios locales sin sincronizar.
+ */
+export async function countUnsyncedOutboxRecords(
+  options: Pick<ClearUserOfflineDataOptions, "db"> = {},
+): Promise<number> {
+  try {
+    const db = await resolveDb(options.db);
+    return await db.outboxQueue.count();
+  } catch {
+    return 0;
+  }
+}
+
+/**
  * Borra los datos locales ligados al usuario al cerrar sesión:
  *
  * - Todas las tablas de Dexie (`offlineDb`): outbox y, en el futuro, lotes e
@@ -62,10 +81,10 @@ export async function clearUserOfflineData(
     const db = await resolveDb(options.db);
     const pending = await db.outboxQueue.where("status").equals("pending").count();
     if (pending > 0) {
-      // TODO(outbox): sustituir por un diálogo de confirmación antes del
-      // logout ("Tienes N cambios sin sincronizar") que permita sincronizar o
-      // descartar explícitamente. Mientras tanto se priorizan la privacidad y
-      // la integridad entre usuarios: la cola se descarta y se avisa.
+      // Respaldo: `LogoutButton` ya pidió confirmación ("Tienes N cambios sin
+      // sincronizar"). Si se llega aquí con pendientes (el usuario eligió
+      // "Cerrar sesión igualmente" u otra vía de logout), se priorizan la
+      // privacidad y la integridad entre usuarios: se descartan y se avisa.
       console.warn(
         `[offline] Cierre de sesión con ${pending} mutación(es) pendiente(s) en la outbox; se descartan.`,
       );

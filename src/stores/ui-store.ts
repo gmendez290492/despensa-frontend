@@ -81,6 +81,8 @@ export const useUiStore = create<UiState>()(
         }),
       },
     ),
-    { name: "DespensaUIStore" },
+    // Redux DevTools solo en desarrollo: en producción no se expone el estado
+    // de UI (activePantryId, cola de escaneo) a extensiones del navegador.
+    { name: "DespensaUIStore", enabled: process.env.NODE_ENV !== "production" },
   ),
 );

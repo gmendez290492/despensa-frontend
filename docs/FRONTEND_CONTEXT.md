@@ -6,7 +6,7 @@
 > backend en [`BACKEND_API_CONTEXT.md`](./BACKEND_API_CONTEXT.md).
 > Actualízalo al cerrar cada bloque de trabajo.
 
-**Última actualización:** 2026-11-26 · **Rama activa:** `feature/auth-login-register` → PR [#3](https://github.com/gmendez290492/despensa-frontend/pull/3) hacia `develop`
+**Última actualización:** 2026-11-26 · **Rama activa:** `feature/etapa-2-pantry` (desde `develop` `40b6f1d`, **sin commit todavía**) · PR #3 ya fusionado en `develop`
 
 ---
 
@@ -21,18 +21,20 @@
 | **Issue #4** (adaptación a backend PR #10: rate limit, `sid`, binding, recuperación de contraseña) | ✅ En PR #3 | Ver §2 "Issue #4" |
 | Auditoría MWG del código de auth | ✅ Aplicada | Ver §3 |
 | Documentación **JSDoc** de exports | ✅ 200/200 exports en `src/` | Ver §4 |
-| Entrega por PR a `develop` | 🟡 PR #3 abierto, CI en verde | Merge solo con confirmación explícita del usuario |
-| Home Dashboard (Stitch) | ⏳ Siguiente | `src/app/page.tsx` es un placeholder temporal |
+| Entrega por PR a `develop` (auth) | ✅ PR #3 fusionado | — |
+| **Etapa 2 · pantry** (Home Dashboard, Inventario, consumo FEFO, outbox offline) | 🟡 Implementada en `feature/etapa-2-pantry`, sin commit/PR | Ver §2b |
+| Pruebas de **seguridad** (Playwright) y **estrés** (k6) | ✅ Escritas y en verde contra FastAPI local | Ver §2b "Seguridad y estrés" |
 
-### Puertas de calidad (última ejecución: 2026-11-26)
+### Puertas de calidad (última ejecución: 2026-11-26, Etapa 2)
 
 | Puerta | Resultado |
 |---|---|
 | `pnpm lint` | ✅ 0 errores |
 | `pnpm typecheck` | ✅ App + SW |
-| `pnpm test` | ✅ 231/231 (19 archivos) |
-| `pnpm build` | ✅ 13 rutas · `public/sw.js` precachea 29 URLs (1.02 MB) |
-| Playwright E2E | ⚠️ No ejecutado en esta sesión (requiere FastAPI local) |
+| `pnpm test` | ✅ 484/484 (31 archivos) |
+| `pnpm build` | ✅ `public/sw.js` precachea 34 URLs (1.19 MB) |
+| Playwright E2E (`pnpm exec playwright test`, incluye `security/`) | ✅ 46/46 (Desktop + Mobile Chrome) con FastAPI local y rate limits relajados |
+| k6 (`pnpm test:stress`): smoke, consume_contention, refresh_storm, idempotent_replay | ✅ 4/4 (load/spike/soak escritos, no ejecutados) |
 
 ---
 
@@ -70,7 +72,7 @@ Primitivas UI reutilizables en `src/components/ui/`: `Alert`, `Button`, `TextFie
 4. **Logout S5:** `GET /api/bff/auth/logout` (solo `Sec-Fetch-Site: same-origin|none`) borra cookies y 303 a `/login`; `LogoutButton` navega a él si el POST falla.
 5. **Recuperación:** `/api/bff/auth/password/{forgot,reset}`. Reset borra cookies (FastAPI revoca todas las sesiones), quita el token de la URL con `history.replaceState` y la ruta se sirve con `Referrer-Policy: no-referrer` + `Cache-Control: no-store`.
 6. **`X-Client-Binding`:** 32 bytes base64url por sesión en cookie `HttpOnly` `despensa_client_binding`, enviado en login y refresh. Sesiones con binding: mutex sin ventana de gracia (la gestiona FastAPI, 10 s); sesiones legacy: gracia de 5 s.
-7. **E2E:** el rate limit del backend bloquea las suites; arrancar FastAPI con `AUTH_RATE_LIMIT_MAX_ATTEMPTS=1000`, `REGISTER_RATE_LIMIT_MAX_ATTEMPTS=1000` y `AUTH_EMAIL_RATE_LIMIT_MAX_ATTEMPTS=1000`.
+7. **E2E / seguridad / k6:** el rate limit del backend bloquea las suites. En `..\Despnsa project`: `AUTH_RATE_LIMIT_MAX_ATTEMPTS=1000 REGISTER_RATE_LIMIT_MAX_ATTEMPTS=1000 AUTH_EMAIL_RATE_LIMIT_MAX_ATTEMPTS=1000 REFRESH_RATE_LIMIT_MAX_ATTEMPTS=1000 docker compose up -d --no-deps --build api`; al terminar, `docker compose up -d --no-deps api` restaura los valores por defecto.
 
 ### Offline / PWA
 
@@ -81,6 +83,25 @@ Primitivas UI reutilizables en `src/components/ui/`: `Alert`, `Button`, `TextFie
 ### Dependencias nuevas
 
 - `server-only` (marca módulos de servidor: `session.ts`, `refresh.ts`, `server-client.ts`, `bff/http.ts`).
+
+---
+
+## 2b. Etapa 2 · pantry (`feature/etapa-2-pantry`)
+
+Pantallas Stitch: Home Dashboard `7888102e6f53468e9258286b534611ae` → `src/app/(app)/page.tsx`; Pantry Inventory `bcc49240c9a6408e8d2a1583fe082fd0` → `src/app/(app)/despensa/page.tsx`. Componentes en `src/features/pantry/components/`, shell en `src/components/app-shell/`, avisos en `src/components/status-announcer.tsx`.
+
+- **BFF:** `src/lib/bff/authenticated-route.ts` (`handleAuthenticated`: CSRF → UUID → Idempotency-Key → body una vez → refresh con mutex). Rutas `pantries`, `pantries/join`, `pantries/[pantryId]/{locations,batches,consume}`, `categories`, `products`, `notifications`.
+- **Dominio:** `decimal.ts` (milésimas enteras), `fefo.ts` (semáforo VENCIDO ≤0 / CRÍTICO 1–3 / PRECAUCIÓN 4–7 / ÓPTIMO >7, consumo optimista espejo de `consume_product_fefo`, `ageBatches` recalcula el semáforo de una caché de días anteriores).
+- **Outbox (Dexie v2):** filas con `userId` (índice). `drainOutbox` exige `userId`, **borra** filas de otros usuarios o sin dueño (privacidad), drena FIFO bajo Web Lock, pausa en 401 (sin bucle), backoff + `Retry-After`. Se encola ante red, 5xx, 408, 429 y `idempotency-request-in-progress`, **reutilizando la misma Idempotency-Key** (`useActionMutationId`). Allowlist por `kind`, sin `//`, `redirect: "manual"`. Consumos encolados sin red no guardan `notes`.
+- **Logout:** si hay cambios sin sincronizar, `<dialog>` "Tienes N cambio(s) sin sincronizar" (Sincronizar ahora / Cancelar / Cerrar sesión igualmente).
+- **Backend:** idempotencia fusionada en `despensa-backend` PR #14 (issue [#11](https://github.com/gmendez290492/despensa-backend/issues/11) **sigue abierto**: el PR no lo cerró; `idempotent_replay` confirma 1 descuento por clave). Abierto [#13](https://github.com/gmendez290492/despensa-backend/issues/13) (validador de `purchase_date`, `ilike` sin escapar, búsqueda por código de barras, paginación). `docs/openapi.json` sincronizado con `develop` del backend.
+- **Pendiente conocido:** el BFF no reenvía `Idempotent-Replayed` (no hace falta hoy); los `@remarks` "hasta que se fusione despensa-backend#11" ya pueden simplificarse.
+
+### Seguridad y estrés
+
+- `pnpm test:security` → `tests/e2e/security/pantry-security.spec.ts`: IDOR (lectura, escritura, UI), 401/redirect, CSRF, UUID/traversal, Idempotency-Key, mass assignment, cantidades hostiles, XSS almacenado, tokens fuera de storage/IDB, logout limpia IDB y revoca, cabeceras, errores sin fugas, open redirect. Helpers en `tests/e2e/support/seed.ts`.
+- `pnpm test:stress` (`SCENARIO=smoke|load|spike|soak|consume_contention|refresh_storm|idempotent_replay`) → `tests/stress/pantry-bff.js` en Docker (`grafana/k6:0.54.0`, `scripts/run-k6.mjs`; `K6_LOCAL=1` usa binario local). Necesita `pnpm build && pnpm start` con `AUTH_COOKIE_SECURE=false`. Lecciones: `noCookiesReset: true` (k6 vacía cookies por iteración), en `setup()` no existen `__VU`/`__ITER`, y en Docker/Rancher Desktop no usar `host-gateway` (solo Linux).
+- Resultados 2026-11-26: smoke p95 dashboard 57 ms; contención 200×1 sobre stock 100 → 100 OK / 100 `insufficient-stock` / stock final 0; refresh_storm 100 VUs con el mismo refresh → 100 % OK y sesión viva; replay 5× por clave → 0 descuentos extra.
 
 ---
 
@@ -106,7 +127,7 @@ Ya cumplía antes: `<form>` + `<label for>`, `type="email"`, toggle "mostrar con
 
 1. **Doble campo de contraseña** (`confirm_password`): la guía de registro desaconseja pedirla dos veces. Se mantiene porque lo pide el diseño Stitch. *Decisión de producto pendiente.*
 2. ~~"¿Olvidaste tu contraseña?"~~ ✅ Resuelto con el issue #4; pantallas diseñadas en Stitch.
-3. **Tamaños en `px`** (`text-[13px]`, `text-[15px]`…) heredados del export de Stitch: `respect-os-text-scale` recomienda unidades relativas. El root font-size no se fija (correcto). Migrar a `rem` en una pasada de tokens tipográficos.
+3. **Tamaños en `px`**: migrados a `rem` en la Etapa 2; quedan en auth y en `Button` `lg` (`text-[15px]`, compartido con auth).
 4. **Contraste del track del slider** (`--surface-high` vs fondo): verificar ≥ 3:1.
 5. Botón de envío `disabled` cuando no hay conexión: su `aria-describedby` no se lee porque un botón deshabilitado no recibe foco. El texto visible lo compensa; valorar `aria-disabled`.
 
@@ -132,8 +153,9 @@ Ya cumplía antes: `<form>` + `<label for>`, `type="email"`, toggle "mostrar con
 
 ## 6. Próximos pasos
 
-1. Ejecutar E2E de Playwright con FastAPI local (con las variables de rate limit de §2 "Issue #4") y añadir E2E de recuperación de contraseña.
-2. Revisar y fusionar el PR #3 en `develop` (solo con confirmación explícita), borrar la rama y sincronizar `develop` en local.
-3. Resolver los hallazgos abiertos de §3.
-4. Siguiente pantalla Stitch: Home Dashboard (lotes FEFO, semáforo, alertas) con `implement-stitch-screen`.
-5. Outbox real (Dexie + `offline-outbox-mutation`) y diálogo "tienes N cambios sin sincronizar" antes del logout (TODO en `clear-user-data.ts`).
+1. Commit de la Etapa 2 y PR `feature/etapa-2-pantry` → `develop` (solo a petición; merge con confirmación explícita).
+2. Cerrar despensa-backend#11 (validado por `idempotent_replay`) y simplificar los `@remarks` que lo citan.
+3. Ejecutar k6 `load`/`spike` (y `soak` antes de producción).
+4. Hallazgos QA bajos no abordados: completar `@param`/`@returns` en `features/pantry/api.ts` y `hooks.ts`.
+5. Hallazgos abiertos de §3 (doble contraseña, contraste del slider, `aria-disabled` en auth).
+6. Siguiente etapa del backend (escáner de códigos de barras con XState) cuando #13 aporte búsqueda por código.
